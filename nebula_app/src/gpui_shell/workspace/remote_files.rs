@@ -472,7 +472,7 @@ impl NebulaWorkspace {
 
         v_flex()
             .h_full()
-            .w(px(320.0))
+            .w(px(self.side_panel_width))
             .flex_shrink_0()
             .p_2()
             .gap_2()

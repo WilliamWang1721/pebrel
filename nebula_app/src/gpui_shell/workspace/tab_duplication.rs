@@ -47,6 +47,7 @@ impl NebulaWorkspace {
             self.add_terminal_with(launch, cwd, None, window, cx);
         }
         if let Some(target) = self.tab_meta.get_mut(self.active) {
+            target.folder = meta.folder;
             target.custom_name = meta.custom_name;
             target.color = meta.color;
         }

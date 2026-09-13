@@ -98,7 +98,7 @@ struct TabsWindow {
 
 impl NebulaWorkspace {
     fn tabs_window(&self) -> TabsWindow {
-        let want = self.tabs.len();
+        let want = self.folder_tab_indices().len();
         let show = visible_count(want, self.tabs_viewport_h, TAB_ROW_PITCH, TAB_ROW_GAP);
         let max = max_scroll(want, show);
         let scroll = clamp_scroll(self.tabs_scroll, max);
@@ -119,8 +119,13 @@ impl NebulaWorkspace {
     }
 
     pub(super) fn reveal_active_tab(&mut self) {
+        let indices = self.folder_tab_indices();
+        if !indices.contains(&self.active) {
+            self.selected_folder = None;
+        }
         let window = self.tabs_window();
-        let next = reveal_index(self.active, window.scroll, window.show);
+        let index = self.folder_tab_indices().iter().position(|&ix| ix == self.active).unwrap_or(0);
+        let next = reveal_index(index, window.scroll, window.show);
         self.tabs_scroll = clamp_scroll(next, window.max);
         self.top_tabs_scroll.scroll_to_item(if self.settings_open {
             self.tabs.len()

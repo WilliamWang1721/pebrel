@@ -88,8 +88,8 @@ impl NebulaWorkspace {
     ) -> gpui::Div {
         let top_tabs = self.tabs_position == nebula_settings::TabsPositionName::Top;
         let bar = TitleBar::new()
-            // Leave 8px above and below the existing 32px controls.
-            .h(px(48.0))
+            // Keep native window controls and a compact draggable title bar.
+            .h(px(36.0))
             .when(!settings_active, |bar| bar.bg(gpui::transparent_black()).border_b_0())
             .when(settings_active, |bar| {
                 bar.border_b_1().border_color(crate::gpui_shell::theme::settings_hairline(cx))

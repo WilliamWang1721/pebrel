@@ -642,7 +642,7 @@ impl NebulaWorkspace {
             *broadcast = false;
         }
         // 标签元数据不继承：`custom_name` / `color` 描述的是**那个 tab**，
-        // `shell_tag` 也可能记的是另一个 pane 的 shell。新 tab 从默认起。
+        // `shell_tag` 也可能记的是另一个 pane 的 shell；只保留文件夹分组。
         let tab = WorkspaceTab::Terminal {
             tree: SplitTree::leaf(pane_id),
             panes: vec![pane],
@@ -651,7 +651,8 @@ impl NebulaWorkspace {
             broadcast: false,
         };
         let at = tab_ix + 1;
-        self.insert_tab_at(at, tab, super::TabMeta::default());
+        let meta = super::TabMeta { folder: self.meta(tab_ix).folder, ..super::TabMeta::default() };
+        self.insert_tab_at(at, tab, meta);
         self.active = at;
         self.focus_active(window, cx);
         self.sync_side_panel_to_active(true, cx);

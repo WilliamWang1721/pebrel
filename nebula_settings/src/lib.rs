@@ -1149,7 +1149,7 @@ impl RuntimeSettings {
             background_image_cover_chrome: raw
                 .bool_on("background_image_cover_chrome")
                 .unwrap_or(false),
-            panel_resize: raw.bool_on("panel_resize").unwrap_or(false),
+            panel_resize: raw.bool_on("panel_resize").unwrap_or(true),
             sidebar_width: raw
                 .f32("sidebar_w")
                 .map(|width| width.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH))
@@ -1376,6 +1376,7 @@ mod tests {
 
     #[test]
     fn defaults_when_file_content_is_absent_or_junk() {
+        assert!(!RuntimeSettings::from_raw(&RawSettings::from_text("panel_resize=0")).panel_resize);
         let settings = RuntimeSettings::from_raw(&RawSettings::from_text("theme=NoSuchTheme\n"));
         // 出厂默认逐项对照旧壳 nebula_settings_load。
         assert_eq!(settings.language, LanguagePref::System);
@@ -1405,7 +1406,7 @@ mod tests {
         assert_eq!(settings.blur, BlurModeName::None);
         assert_eq!(settings.opacity, 1.0);
         assert_eq!(settings.background, None);
-        assert!(!settings.panel_resize);
+        assert!(settings.panel_resize);
         assert_eq!(settings.sidebar_width, DEFAULT_SIDEBAR_WIDTH);
         assert_eq!(settings.ssh_proxy_mode, ProxyModeName::Off);
         assert_eq!(settings.quick_terminal_hotkey, DEFAULT_QUICK_TERMINAL_HOTKEY);

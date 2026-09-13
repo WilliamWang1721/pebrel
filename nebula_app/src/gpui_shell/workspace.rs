@@ -65,6 +65,8 @@ mod send_to_chat;
 mod session_persistence;
 mod shell_picker;
 use shell_picker::shell_palette_rows;
+mod folder_groups;
+mod panel_resize;
 mod settings_navigation;
 mod sidebar;
 mod ssh_dialog;
@@ -788,6 +790,7 @@ fn ssh_host_icon_ids(data_dir: &Path) -> std::collections::HashMap<String, Strin
 /// 会让色条和名字错位到邻居身上。
 #[derive(Clone, Debug, Default)]
 struct TabMeta {
+    folder: Option<String>,
     /// 用户重命名过的标签名；`None` = 跟着 cwd/文件名自动走。
     custom_name: Option<String>,
     /// 色标（右键菜单的标签颜色）；`None` = 不画色条。
@@ -897,6 +900,9 @@ pub struct NebulaWorkspace {
     /// 进行中的侧栏拖宽（设置「面板拖拽调节」开启时才有入口）；宽度实时
     /// 生效，松手写盘 `sidebar_w`（旧壳同合同）。
     sidebar_resizing: bool,
+    side_panel_width: f32,
+    side_panel_resizing: bool,
+    selected_folder: Option<String>,
     /// Markdown reader focus is a temporary presentation mode. The entity key
     /// makes it safe across tab reordering and prevents a stale global bool.
     reader_focus: Option<ReaderFocusState>,
@@ -1181,6 +1187,9 @@ impl NebulaWorkspace {
             cross_window_dock: None,
             split_drag: None,
             sidebar_resizing: false,
+            side_panel_width: SIDE_PANEL_SLOT_W,
+            side_panel_resizing: false,
+            selected_folder: None,
             reader_focus: None,
             split_bounds: Rc::new(RefCell::new(HashMap::new())),
             pane_bounds: Rc::new(RefCell::new(HashMap::new())),
@@ -1452,6 +1461,7 @@ impl NebulaWorkspace {
         self.tabs_position = runtime.tabs_position;
         self.sync_settings_layout();
         self.sidebar_resizing = false;
+        self.side_panel_resizing = false;
         self.reveal_if_tray_disabled(cx);
         cx.notify();
     }
@@ -1541,6 +1551,14 @@ impl NebulaWorkspace {
         if self.settings_open {
             self.leave_settings(window, cx);
         }
+        let folder = self.selected_folder.clone();
+        let cwd = folder.as_deref().and_then(crate::session::valid_dir).or(cwd);
+        let mut launch_session = launch_session;
+        if let (Some(folder), crate::session::LaunchSession::Profile { cwd, .. }) =
+            (&folder, &mut launch_session)
+        {
+            *cwd = Some(folder.clone());
+        }
         let shell_tag = Self::launch_shell_tag(&launch_session);
         let grid = self.inherited_grid(cx);
         let launch = Self::terminal_launch_from_session(&launch_session, cwd);
@@ -1558,7 +1576,7 @@ impl NebulaWorkspace {
         self.insert_tab_at(
             at,
             tab,
-            TabMeta { shell_tag, launch: Some(launch_session), ..TabMeta::default() },
+            TabMeta { folder, shell_tag, launch: Some(launch_session), ..TabMeta::default() },
         );
         self.active = at;
         self.reveal_active_tab();
@@ -2089,6 +2107,7 @@ impl NebulaWorkspace {
             at,
             WorkspaceTab::Terminal { panes, tree, focused, zoomed: false, broadcast: false },
             TabMeta {
+                folder: tab.folder.clone(),
                 custom_name: tab.custom_name.clone(),
                 color: tab.color,
                 shell_tag: Self::launch_shell_tag(&saved_launch),
@@ -2156,6 +2175,7 @@ impl NebulaWorkspace {
             let active_pane = tree.leaves().iter().position(|id| id == focused).unwrap_or(0);
             tabs.push(TabSession {
                 cwd,
+                folder: meta.folder,
                 custom_name: meta.custom_name,
                 color: meta.color,
                 launch: Some(launch),
@@ -3184,72 +3204,6 @@ impl NebulaWorkspace {
         cx.notify();
     }
 
-    fn render_side_panel_slot(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        if !self.side_panel_anim_armed && !self.side_panel.open {
-            return div().into_any_element();
-        }
-        let open = self.side_panel.open;
-        // 路由每帧都做，而且必须在挑渲染分支之前：聚焦 pane 可能刚从本地切到
-        // 远端（或反过来），这一帧就该画对。
-        let remote = self.side_panel.open && self.route_remote_browser(window, cx);
-        let panel = match self.side_panel.view {
-            // "文件"视图画谁由聚焦 pane 的身份决定，不是一个用户要自己选的
-            // 页签——用户想看的永远是"当前这台机器上的文件"。
-            crate::display::side_panel::PanelView::Files if remote => self.render_remote_files(cx),
-            crate::display::side_panel::PanelView::Files => self.render_file_tree(cx),
-            crate::display::side_panel::PanelView::Git => self.render_git_tree(window, cx),
-        };
-        div()
-            .h_full()
-            .flex()
-            .justify_end()
-            .flex_shrink_0()
-            .overflow_hidden()
-            // 本地文件、SFTP 和 Git 共用这一层壳色，与左侧栏、卡缝融为一体。
-            // 子视图只画内容；再次铺半透明底色会叠加 alpha，变成更亮的独立浮卡。
-            .bg(cx.theme().background)
-            .child(
-                // 抽屉整体从右缘推进来，而不是原地被擦出来。旧壳
-                // （side_panel.rs:1718）把 x 插值成
-                // `rest_x + (1-eased) * (w + margin)`——整列内容在动；只动槽位宽度
-                // 的话内容一动不动，只有裁剪窗口在变宽，那就是"擦除"的观感来源。
-                // 槽位宽度仍然同步收放，正文（终端卡）才会跟着让位。
-                //
-                // 底部 8px 由槽位给（用户 08-26 裁定「文件树底部要留一段间距」，
-                // 此前抽屉直插窗口底边）：写成抽屉自己的 margin 会和它的 `h_full`
-                // 相加而溢出槽位、底部两角被 `overflow_hidden` 裁掉；写成父级
-                // padding 则 `h_full` 按内容框解析，正好矮 8px。上边贴 chrome 下沿、
-                // 右边贴窗口右缘不变，左边那条缝由终端卡的 `pr` 给。
-                div()
-                    .relative()
-                    .h_full()
-                    .flex_shrink_0()
-                    .pb(px(crate::gpui_shell::theme::PaneCardStyle::current(cx).margin.bottom))
-                    .child(panel)
-                    .with_animation(
-                        ("side-panel-push", open as usize),
-                        Animation::new(Duration::from_millis(240)).with_easing(ease_out_quint()),
-                        move |band, t| {
-                            let progress = if open { t } else { 1.0 - t };
-                            band.left(px(SIDE_PANEL_SLOT_W * (1.0 - progress)))
-                        },
-                    ),
-            )
-            .with_animation(
-                ("side-panel-slide", open as usize),
-                Animation::new(Duration::from_millis(240)).with_easing(ease_out_quint()),
-                move |slot, t| {
-                    let progress = if open { t } else { 1.0 - t };
-                    slot.w(px(SIDE_PANEL_SLOT_W * progress))
-                },
-            )
-            .into_any_element()
-    }
-
     /// 进入行内重命名：对照旧壳 `TabRequest::BeginRename`
     /// （`window_context.rs` ~854-868）。预填 `custom_name`，否则
     /// `chrome_tab_label`（cwd 末级，不含分屏后缀）。已在编辑别的行时丢掉
@@ -4135,6 +4089,7 @@ impl Render for NebulaWorkspace {
                                             .on_mouse_down(
                                                 MouseButton::Left,
                                                 cx.listener(|this, _, _, cx| {
+                                                    cx.stop_propagation();
                                                     this.sidebar_resizing = true;
                                                     cx.notify();
                                                 }),
@@ -4228,7 +4183,8 @@ impl Render for NebulaWorkspace {
                             ),
                     )
                     .when(!reader_focus, |row| {
-                        row.child(self.render_side_panel_slot(window, cx))
+                        row.children(self.side_panel_resize_handle(cx))
+                            .child(self.render_side_panel_slot(window, cx))
                     }),
             )
             .when_some(dock_preview, |root, (x, y, w, h)| {
@@ -4270,6 +4226,7 @@ impl Render for NebulaWorkspace {
             .children(self.tabs_scrollbar_drag_overlay(cx))
             .children(self.pane_drag_overlay(cx))
             .children(self.split_drag_visual(cx))
+            .children(self.side_panel_resize_overlay(cx))
             .when(self.sidebar_resizing, |root| {
                 // 侧栏拖宽罩层（同 split_drag 的指针捕获模式）：移动实时改宽
                 // （夹在共享层的 170..420 之间），松手写盘 `sidebar_w`。
@@ -4280,6 +4237,11 @@ impl Render for NebulaWorkspace {
                         .occlude()
                         .cursor_col_resize()
                         .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                            if event.pressed_button != Some(MouseButton::Left) {
+                                this.sidebar_resizing = false;
+                                cx.notify();
+                                return;
+                            }
                             // 分界跟着指针走：换算用的偏移必须与热区同源，
                             // 否则抓住线之后线会甩在指针后面。
                             let width = (f32::from(event.position.x)

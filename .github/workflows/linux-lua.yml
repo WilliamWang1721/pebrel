@@ -1,6 +1,7 @@
 name: Linux Lua configuration
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "**/*.rs"
@@ -43,3 +44,6 @@ jobs:
           cargo test --locked -p nebula config::
       - name: Check Linux release build
         run: cargo check --workspace --release
+
+      - name: Test GPUI workspace and session behavior
+        run: cargo test --locked -p nebula --features gpui-test-support

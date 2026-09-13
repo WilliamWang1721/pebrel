@@ -156,6 +156,9 @@ impl LayoutSession {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TabSession {
+    /// Optional sidebar folder group, independent of the running pane cwd.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     /// Working directory of the tab's focused pane. Kept alongside `layout`
     /// because the boot path seeds its first pane from it before the tree is
     /// rebuilt, and v1–v3 files carry nothing else.
@@ -180,7 +183,7 @@ pub struct TabSession {
 impl TabSession {
     /// A v3-shaped tab: one pane at `cwd`, default shell.
     pub fn single(cwd: String, custom_name: Option<String>, color: Option<Rgb>) -> Self {
-        Self { cwd, custom_name, color, launch: None, layout: None, active_pane: 0 }
+        Self { folder: None, cwd, custom_name, color, launch: None, layout: None, active_pane: 0 }
     }
 }
 
@@ -335,6 +338,16 @@ pub fn mark_boot_attempt(session: &mut Session) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_group_round_trips_without_changing_legacy_sessions() {
+        let old: super::TabSession = serde_json::from_str(r#"{"cwd":"/work"}"#).unwrap();
+        assert!(old.folder.is_none());
+        let mut tab = old;
+        tab.folder = Some("/work/project".into());
+        let encoded = serde_json::to_string(&tab).unwrap();
+        assert_eq!(serde_json::from_str::<super::TabSession>(&encoded).unwrap(), tab);
+    }
 
     /// 崩溃判定的三种现场：自动保存写的半路快照、正常收尾、以及一路关标签
     /// 关到空——只有第一种算异常退出。

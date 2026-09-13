@@ -1,4 +1,9 @@
 {
+  "folders": {
+    "add": "Add folder group",
+    "all": "All tabs",
+    "pick_failed": "Could not select a folder"
+  },
   "language": {
     "self_name": "English",
     "system": "Follow system",

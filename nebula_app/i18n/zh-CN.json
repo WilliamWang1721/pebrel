@@ -1,4 +1,9 @@
 {
+  "folders": {
+    "add": "添加文件夹分组",
+    "all": "全部标签",
+    "pick_failed": "无法选择文件夹"
+  },
   "language": {
     "self_name": "简体中文",
     "system": "跟随系统",

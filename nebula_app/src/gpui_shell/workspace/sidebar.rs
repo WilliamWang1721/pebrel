@@ -263,8 +263,11 @@ impl NebulaWorkspace {
         // 行的确定宽度：侧栏宽 − 侧栏 p_2 两边 − 列表右侧滚动条留白。
         // 与下面 `label_avail` 同一份减法口径，两者不能各算一套。
         let row_w = (self.sidebar_width - 16.0 - tab_scroll::TAB_SCROLL_GUTTER).max(1.0);
-        let items = (0..self.tabs.len())
-            .filter(|&ix| tab_scroll::index_visible(ix, tabs_scroll, tabs_show))
+        let items = self
+            .folder_tab_indices()
+            .into_iter()
+            .skip(tabs_scroll)
+            .take(tabs_show)
             .map(|ix| {
                 let active = ix == self.active;
                 let TabPresentation {
@@ -427,6 +430,7 @@ impl NebulaWorkspace {
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                        if this.selected_folder.is_some() { return; }
                         this.tab_drag = Some(TabDrag {
                             source: ix,
                             cross_window: this.cross_window_drag_payload(ix, cx),
@@ -660,7 +664,7 @@ impl NebulaWorkspace {
             .collect::<Vec<_>>();
 
         let header_group: SharedString = "sidebar-tabs-header-hover".into();
-        let count: SharedString = self.tabs.len().to_string().into();
+        let count: SharedString = self.folder_tab_indices().len().to_string().into();
 
         let sidebar = v_flex()
             .w(px(self.sidebar_width))
@@ -679,6 +683,7 @@ impl NebulaWorkspace {
             .on_mouse_move(cx.listener(|this, event, window, cx| {
                 this.update_tab_drag(event, window, cx);
             }))
+            .child(self.render_folder_groups(cx))
             .child(
                 h_flex()
                     .id("sidebar-tabs-toggle")
