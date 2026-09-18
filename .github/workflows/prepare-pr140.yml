@@ -1,0 +1,70 @@
+name: Prepare and verify PR 140 repair
+
+on:
+  push:
+    branches: [codex/pebrel-patch-transport]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: transport
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/render-settings-cache
+          fetch-depth: 0
+          path: source
+      - id: commit
+        working-directory: source
+        env:
+          GIT_AUTHOR_NAME: Zixiu Wang
+          GIT_AUTHOR_EMAIL: 140129782+WilliamWang1721@users.noreply.github.com
+          GIT_COMMITTER_NAME: Zixiu Wang
+          GIT_COMMITTER_EMAIL: 140129782+WilliamWang1721@users.noreply.github.com
+        run: |
+          git fetch https://github.com/Kuddev/pebrel.git main
+          git switch --detach 75dc0b9481c66a88964b2ae6747f98493a415d41
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          changes = json.loads(Path('../transport/tmp/pr140-changes.json').read_text())
+          for name, edits in changes.items():
+              path = Path(name)
+              lines = path.read_text().splitlines(True)
+              for start, end, value in reversed(edits):
+                  lines[start:end] = value.splitlines(True)
+              path.write_text(''.join(lines))
+          subprocess.run(['git', 'add', '--', *changes], check=True)
+          PY
+          tree="$(git write-tree)"
+          test "$tree" = ac335cb8a27bd8c788edc1578cd82afe15d0991b
+          commit="$(git commit-tree "$tree" -p 166dd64198bfd552fa4d33da783361bb69c5ca12 -p 75dc0b9481c66a88964b2ae6747f98493a415d41 -m 'fix: reconcile render settings cache with main and guard cancelled packaging')"
+          git push origin "$commit:refs/heads/codex/pr-140-prepared"
+          echo "sha=$commit" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - run: git diff --check HEAD^2 HEAD
+      - run: cargo fmt --all -- --check
+      - run: python3 scripts/check_architecture.py --base 75dc0b9481c66a88964b2ae6747f98493a415d41
+      - run: python3 -m unittest scripts.tests.test_preview_release scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance scripts.conformance.tests.test_scrollback
+      - run: cargo test --locked --manifest-path tools/i18n-contract/Cargo.toml
