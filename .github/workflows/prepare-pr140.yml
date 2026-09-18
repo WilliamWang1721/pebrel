@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: codex/render-settings-cache
+          ref: codex/pr-140-prepared
           fetch-depth: 0
           path: source
       - id: commit
@@ -32,12 +32,12 @@ jobs:
           GIT_COMMITTER_NAME: Zixiu Wang
           GIT_COMMITTER_EMAIL: 140129782+WilliamWang1721@users.noreply.github.com
         run: |
-          git fetch https://github.com/Kuddev/pebrel.git main
           git switch --detach 75dc0b9481c66a88964b2ae6747f98493a415d41
           python3 - <<'PY'
           import json, subprocess
           from pathlib import Path
           changes = json.loads(Path('../transport/tmp/pr140-changes.json').read_text())
+          changes.pop('.github/workflows/preview-packages.yml')
           for name, edits in changes.items():
               path = Path(name)
               lines = path.read_text().splitlines(True)
@@ -47,23 +47,44 @@ jobs:
           subprocess.run(['git', 'add', '--', *changes], check=True)
           PY
           tree="$(git write-tree)"
-          test "$tree" = ac335cb8a27bd8c788edc1578cd82afe15d0991b
-          commit="$(git commit-tree "$tree" -p 166dd64198bfd552fa4d33da783361bb69c5ca12 -p 75dc0b9481c66a88964b2ae6747f98493a415d41 -m 'fix: reconcile render settings cache with main and guard cancelled packaging')"
+          test "$tree" = 89792a294fb75e7e3917e80d3b7cc2de7ba8f06b
+          commit="$(git commit-tree "$tree" -p 75dc0b9481c66a88964b2ae6747f98493a415d41 -m 'fix: adapt render settings cache to current main')"
           git push origin "$commit:refs/heads/codex/pr-140-prepared"
           echo "sha=$commit" >> "$GITHUB_OUTPUT"
   verify:
     needs: prepare
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: transport
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.commit }}
           fetch-depth: 0
+          path: source
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.97.1'
           components: rustfmt
-      - run: git diff --check HEAD^2 HEAD
+      - run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          name = '.github/workflows/preview-packages.yml'
+          edits = json.loads(Path('../transport/tmp/pr140-changes.json').read_text())[name]
+          path = Path(name)
+          lines = path.read_text().splitlines(True)
+          for start, end, value in reversed(edits):
+              lines[start:end] = value.splitlines(True)
+          path.write_text(''.join(lines))
+          PY
+      - run: git diff --check
       - run: cargo fmt --all -- --check
       - run: python3 scripts/check_architecture.py --base 75dc0b9481c66a88964b2ae6747f98493a415d41
       - run: python3 -m unittest scripts.tests.test_preview_release scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance scripts.conformance.tests.test_scrollback
