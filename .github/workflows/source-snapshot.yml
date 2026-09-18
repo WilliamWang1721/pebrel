@@ -1,0 +1,28 @@
+name: Source snapshot
+
+on:
+  push:
+    branches: [codex/pebrel-source-snapshot]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - run: |
+          git fetch origin pull/140/head:refs/heads/pr-140
+          git bundle create "$RUNNER_TEMP/pebrel.bundle" --all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-source
+          path: ${{ runner.temp }}/pebrel.bundle
+          retention-days: 1
+          if-no-files-found: error
