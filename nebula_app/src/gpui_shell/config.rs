@@ -38,10 +38,11 @@ pub(crate) const fn effective_cursor_blink(configured: Option<bool>) -> bool {
     }
 }
 
-/// 应用启动时装载一次的全局设置。
+/// 应用启动及设置、系统外观变化时更新的全局设置。
 pub struct Settings {
     /// 已解析的界面语言。GPUI 组件只读这个内存全局，渲染路径不得重复读盘。
     pub ui_language: UiLanguage,
+    pub panel_resize: bool,
     pub font_family: String,
     pub font_cjk: Option<[gpui::Font; 4]>,
     pub font_bold_family: String,
@@ -245,6 +246,7 @@ impl Settings {
 
         Settings {
             ui_language,
+            panel_resize: runtime.panel_resize,
             font_bold_family: secondary(&raw.font.bold),
             font_italic_family: secondary(&raw.font.italic),
             font_bold_italic_family: secondary(&raw.font.bold_italic),
@@ -791,6 +793,25 @@ mod tests {
     fn explicit_runtime_languages_resolve_without_reading_system_locale() {
         assert_eq!(resolve_ui_language(LanguagePref::ZhCn), UiLanguage::ZhCn);
         assert_eq!(resolve_ui_language(LanguagePref::EnUs), UiLanguage::EnUs);
+    }
+
+    #[cfg(feature = "gpui-test-support")]
+    #[gpui::test]
+    fn render_preferences_read_current_settings(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            for (theme, language, panel_resize) in [
+                (ThemeName::Nord, UiLanguage::ZhCn, false),
+                (ThemeName::Paper, UiLanguage::EnUs, true),
+            ] {
+                let runtime = RuntimeSettings { panel_resize, ..RuntimeSettings::default() };
+                let mut settings = Settings::load_with_runtime(theme, runtime);
+                settings.ui_language = language;
+                cx.set_global(settings);
+                assert_eq!(crate::gpui_shell::theme::effective_theme_name(cx), theme);
+                assert_eq!(super::ui_language(cx), language);
+                assert_eq!(cx.global::<Settings>().panel_resize, panel_resize);
+            }
+        });
     }
 
     #[test]
