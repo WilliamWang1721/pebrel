@@ -1,0 +1,265 @@
+name: Apply YubiKey MVP
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/apply-yubikey-mvp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/yubikey-piv
+          fetch-depth: 0
+
+      - name: Apply minimal YubiKey implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > nebula_app/src/platform/yubikey.rs <<'RS'
+          #[cfg(any(target_os = "macos", target_os = "linux"))]
+          use std::io;
+          #[cfg(any(target_os = "macos", target_os = "linux"))]
+          use std::path::{Path, PathBuf};
+          #[cfg(any(target_os = "macos", target_os = "linux"))]
+          use std::process::Command;
+
+          #[cfg(target_os = "macos")]
+          const DEFAULT_PROVIDERS: &[&str] = &[
+              "/opt/homebrew/lib/libykcs11.dylib",
+              "/usr/local/lib/libykcs11.dylib",
+          ];
+
+          #[cfg(target_os = "linux")]
+          const DEFAULT_PROVIDERS: &[&str] = &[
+              "/usr/local/lib/libykcs11.so",
+              "/usr/lib/x86_64-linux-gnu/libykcs11.so",
+              "/usr/lib/aarch64-linux-gnu/libykcs11.so",
+              "/usr/lib/libykcs11.so",
+              "/usr/lib64/libykcs11.so",
+          ];
+
+          #[cfg(any(target_os = "macos", target_os = "linux"))]
+          pub(crate) fn activate(provider: Option<&Path>) -> io::Result<()> {
+              let provider = provider
+                  .map(PathBuf::from)
+                  .or_else(|| DEFAULT_PROVIDERS.iter().map(PathBuf::from).find(|path| path.is_file()))
+                  .ok_or_else(|| {
+                      io::Error::new(
+                          io::ErrorKind::NotFound,
+                          "libykcs11 was not found; pass its path with --provider",
+                      )
+                  })?;
+
+              let status = Command::new("ssh-add").arg("-s").arg(provider).status()?;
+              if status.success() {
+                  Ok(())
+              } else {
+                  Err(io::Error::other(format!("ssh-add exited with {status}")))
+              }
+          }
+          RS
+          rm -f nebula_app/src/platform/yubikey/tests.rs
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("nebula_app/src/ssh_session/lifecycle.rs")
+          s = p.read_text()
+          old = """pub(super) async fn authentication<T>(
+              operation: &str,
+              future: impl Future<Output = Result<T, russh::Error>>,
+          ) -> Result<T, SessionError> {
+              network_with_budget(operation, AUTH_RESPONSE_TIMEOUT, future).await
+          }
+          """
+          new = """pub(super) async fn authentication<T, Error>(
+              operation: &str,
+              future: impl Future<Output = Result<T, Error>>,
+          ) -> Result<T, SessionError>
+          where
+              Error: Into<SessionError>,
+          {
+              network_with_budget(operation, AUTH_RESPONSE_TIMEOUT, future).await
+          }
+          """
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path("nebula_app/src/ssh_session.rs")
+          s = p.read_text()
+          old = """use russh::keys::ssh_key;
+          use russh::keys::{HashAlg, PrivateKeyWithHashAlg};"""
+          new = """use russh::keys::ssh_key;
+          #[cfg(unix)]
+          use russh::keys::agent::client::AgentClient;
+          use russh::keys::{HashAlg, PrivateKeyWithHashAlg};"""
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = """enum AuthMethod {
+              PrivateKey(PathBuf),
+              StoredPassword,"""
+          new = """enum AuthMethod {
+              PrivateKey(PathBuf),
+              Agent,
+              StoredPassword,"""
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = """            methods.extend([
+                          AuthMethod::StoredPassword,"""
+          new = """            methods.extend([
+                          AuthMethod::Agent,
+                          AuthMethod::StoredPassword,"""
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = """            AuthMethod::StoredPassword => {
+                          if !loaded_stored_password {"""
+          new = """            AuthMethod::Agent => {
+                          if try_agent(session, destination).await? {
+                              clear_secret(&mut reusable_password);
+                              return Ok(());
+                          }
+                      },
+                      AuthMethod::StoredPassword => {
+                          if !loaded_stored_password {"""
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = """            AuthMethod::StoredPassword => {
+                          // A non-empty draft is the user's explicit answer for this"""
+          new = """            AuthMethod::Agent => {
+                          if try_agent(session, destination).await? {
+                              clear_secret(&mut stored_password);
+                              return Ok(());
+                          }
+                      },
+                      AuthMethod::StoredPassword => {
+                          // A non-empty draft is the user's explicit answer for this"""
+          assert old in s
+          s = s.replace(old, new, 1)
+          marker = """/// 用 `path` 的私钥认证一轮。密钥本地不可用（读取/解析/口令问题）返回
+          """
+          assert marker in s
+          agent = """#[cfg(unix)]
+          async fn try_agent(
+              session: &mut ClientSession,
+              destination: &SshDestination,
+          ) -> Result<bool, SessionError> {
+              let Ok(mut agent) = AgentClient::connect_env().await else {
+                  return Ok(false);
+              };
+              let Ok(identities) = agent.request_identities().await else {
+                  return Ok(false);
+              };
+
+              for identity in identities {
+                  let key = identity.public_key().into_owned();
+                  let hash = rsa_hash_for(session, key.algorithm().is_rsa()).await;
+                  if lifecycle::authentication(
+                      "SSH agent authentication",
+                      session.authenticate_publickey_with(&destination.user, key, hash, &mut agent),
+                  )
+                  .await?
+                  .success()
+                  {
+                      return Ok(true);
+                  }
+              }
+              Ok(false)
+          }
+
+          #[cfg(not(unix))]
+          async fn try_agent(
+              _session: &mut ClientSession,
+              _destination: &SshDestination,
+          ) -> Result<bool, SessionError> {
+              Ok(false)
+          }
+
+          """
+          s = s.replace(marker, agent + marker, 1)
+          p.write_text(s)
+
+          p = Path("nebula_app/src/ssh_session/tests.rs")
+          s = p.read_text()
+          old = """            AuthMethod::PrivateKey(PathBuf::from(r"C:\\Keys\\config")),
+                      AuthMethod::StoredPassword,"""
+          new = """            AuthMethod::PrivateKey(PathBuf::from(r"C:\\Keys\\config")),
+                      AuthMethod::Agent,
+                      AuthMethod::StoredPassword,"""
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path("nebula_app/src/cli.rs")
+          s = p.read_text()
+          old = """    /// Validate or create the Pebrel configuration.
+              Config(ConfigOptions),
+          """
+          new = """    /// Validate or create the Pebrel configuration.
+              Config(ConfigOptions),
+              /// Load a YubiKey PIV provider into the current SSH agent.
+              #[cfg(any(target_os = "macos", target_os = "linux"))]
+              #[command(name = "yubikey")]
+              YubiKey(YubiKeyOptions),
+          """
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = """/// Options for the `setup-ai` subcommand.
+          #[cfg(windows)]
+          #[derive(Args, Debug)]
+          pub struct SetupAiOptions {
+          """
+          new = """/// Options for loading YubiKey PIV keys into the current SSH agent.
+          #[cfg(any(target_os = "macos", target_os = "linux"))]
+          #[derive(Args, Debug)]
+          pub struct YubiKeyOptions {
+              /// Path to libykcs11. Common Yubico installation paths are detected automatically.
+              #[clap(long, value_hint = ValueHint::FilePath)]
+              pub provider: Option<PathBuf>,
+          }
+
+          /// Options for the `setup-ai` subcommand.
+          #[cfg(windows)]
+          #[derive(Args, Debug)]
+          pub struct SetupAiOptions {
+          """
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path("nebula_app/src/main.rs")
+          s = p.read_text()
+          old = """        Some(Subcommands::Config(options)) => std::process::exit(config_cli::run(options)),
+                  #[cfg(windows)]
+                  Some(Subcommands::NotifyTest) => std::process::exit(crate::notify::notify_test()),
+          """
+          new = """        Some(Subcommands::Config(options)) => std::process::exit(config_cli::run(options)),
+                  #[cfg(any(target_os = "macos", target_os = "linux"))]
+                  Some(Subcommands::YubiKey(options)) => {
+                      platform::yubikey::activate(options.provider.as_deref())?
+                  },
+                  #[cfg(windows)]
+                  Some(Subcommands::NotifyTest) => std::process::exit(crate::notify::notify_test()),
+          """
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Format and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          git diff --check
+          git config user.name "GeekMr"
+          git config user.email "140129782+WilliamWang1721@users.noreply.github.com"
+          git add nebula_app/src/cli.rs nebula_app/src/main.rs nebula_app/src/platform/yubikey.rs nebula_app/src/platform/yubikey/tests.rs nebula_app/src/ssh_session.rs nebula_app/src/ssh_session/lifecycle.rs nebula_app/src/ssh_session/tests.rs
+          git commit -m "feat(ssh): complete YubiKey PIV agent authentication"
+          git push origin HEAD:codex/yubikey-piv
