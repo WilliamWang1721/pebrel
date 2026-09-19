@@ -1,5 +1,12 @@
 use super::*;
 
+fn title_bar_height(density: nebula_settings::DensityName) -> f32 {
+    match density {
+        nebula_settings::DensityName::Standard => 48.0,
+        nebula_settings::DensityName::Compact => 36.0,
+    }
+}
+
 /// Prepaint records the actual pane column before any titlebar paint runs. Keep
 /// this cell for the workspace lifetime, so resizing and panel animations do not
 /// allocate a new shared slot or duplicate the body's layout calculations.
@@ -88,9 +95,12 @@ impl NebulaWorkspace {
     ) -> gpui::Div {
         let top_tabs = self.tabs_position == nebula_settings::TabsPositionName::Top;
         let native_layout = crate::platform::window_chrome::layout(window);
+        let density = cx
+            .try_global::<crate::gpui_shell::config::Settings>()
+            .map(|settings| settings.density)
+            .unwrap_or_default();
         let bar = TitleBar::new()
-            // Leave 8px above and below the existing 32px controls.
-            .h(px(48.0))
+            .h(px(title_bar_height(density)))
             .when(!settings_active, |bar| bar.bg(gpui::transparent_black()).border_b_0())
             .when(settings_active, |bar| {
                 bar.border_b_1().border_color(crate::gpui_shell::theme::settings_hairline(cx))
@@ -129,5 +139,18 @@ impl NebulaWorkspace {
             .flex_shrink_0()
             .when(!settings_active, |title| title.child(self.titlebar_background.element()))
             .child(bar)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_title_bar_reduces_spacing_without_clipping_tabs() {
+        assert_eq!(title_bar_height(nebula_settings::DensityName::Standard), 48.0);
+        let compact = title_bar_height(nebula_settings::DensityName::Compact);
+        assert_eq!(compact, 36.0);
+        assert!(compact >= top_tabs::TOP_TAB_H);
     }
 }
