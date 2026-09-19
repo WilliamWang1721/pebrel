@@ -1,0 +1,74 @@
+name: Repair PR 128 against latest main
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/repair-pr128-latest.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/macos-portable-startup
+          fetch-depth: 0
+
+      - name: Merge latest main and preserve ADR-0010
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path("docs/architecture-decisions.md").read_text(encoding="utf-8")
+          start = text.index("## ADR-0010 — macOS portable startup storage")
+          end = text.index("\n## Process\n", start)
+          Path("/tmp/adr0010.md").write_text(text[start:end].rstrip() + "\n\n", encoding="utf-8")
+          PY
+
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U | sort)"
+            expected="$(printf '%s\n' '.github/workflows/linux-lua.yml' 'docs/architecture-decisions.md' | sort)"
+            test "$conflicts" = "$expected"
+          fi
+
+          git checkout --theirs .github/workflows/linux-lua.yml docs/architecture-decisions.md
+          git restore --source=origin/main --staged --worktree .github/workflows/preview-packages.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("docs/architecture-decisions.md")
+          text = path.read_text(encoding="utf-8")
+          adr = Path("/tmp/adr0010.md").read_text(encoding="utf-8")
+          marker = "## Process\n"
+          if "## ADR-0010 — macOS portable startup storage" not in text:
+              if text.count(marker) != 1:
+                  raise SystemExit("unexpected Process marker count")
+              text = text.replace(marker, adr + marker)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          git add .github/workflows/linux-lua.yml .github/workflows/preview-packages.yml docs/architecture-decisions.md
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git add -A
+          git diff --cached --check
+          python3 scripts/check_architecture.py --base "$(git rev-parse origin/main)"
+          python3 -m json.tool nebula_app/i18n/en-US.json >/dev/null
+          python3 -m json.tool nebula_app/i18n/zh-CN.json >/dev/null
+
+          git commit -m "merge: sync macOS portable mode with latest main"
+          git push origin HEAD:codex/macos-portable-startup
