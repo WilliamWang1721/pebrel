@@ -1,0 +1,46 @@
+name: Export YubiKey branch
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/export-yubikey.yml
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/yubikey-piv
+          fetch-depth: 0
+
+      - name: Create source ZIP
+        shell: bash
+        run: git archive --format=zip --output=pebrel-yubikey-source.zip HEAD
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-yubikey-source
+          path: pebrel-yubikey-source.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Record run ID
+        shell: bash
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          git fetch origin automation/sync-export-20260919
+          git worktree add /tmp/meta origin/automation/sync-export-20260919
+          cd /tmp/meta
+          printf 'run_id=%s\nsha=%s\n' "$GITHUB_RUN_ID" "$SHA" > .github/last-yubikey-export-run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/last-yubikey-export-run.txt
+          git commit -m "chore: record yubikey export run $GITHUB_RUN_ID"
+          git push origin HEAD:automation/sync-export-20260919
