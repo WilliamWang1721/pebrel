@@ -34,6 +34,7 @@ pub mod startup;
 pub(crate) mod update_installation;
 #[cfg(feature = "gpui-shell")]
 pub(crate) mod window_chrome;
+pub(crate) mod yubikey;
 
 pub use capabilities::CAPABILITIES;
 

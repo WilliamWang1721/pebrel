@@ -271,6 +271,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(Subcommands::Msg(options)) => msg(options)?,
         Some(Subcommands::Migrate(options)) => migrate::migrate(options),
         Some(Subcommands::Config(options)) => std::process::exit(config_cli::run(options)),
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        Some(Subcommands::YubiKey(options)) => {
+            platform::yubikey::activate(options.provider.as_deref())?
+        },
         #[cfg(windows)]
         Some(Subcommands::NotifyTest) => std::process::exit(crate::notify::notify_test()),
         #[cfg(windows)]

@@ -43,6 +43,9 @@ _pebrel() {
             pebrel,window)
                 cmd="pebrel__window"
                 ;;
+            pebrel,yubikey)
+                cmd="pebrel__yubikey"
+                ;;
             pebrel__agent,delegate)
                 cmd="pebrel__agent__delegate"
                 ;;
@@ -322,6 +325,9 @@ _pebrel() {
             pebrel__help,window)
                 cmd="pebrel__help__window"
                 ;;
+            pebrel__help,yubikey)
+                cmd="pebrel__help__yubikey"
+                ;;
             pebrel__help__agent,delegate)
                 cmd="pebrel__help__agent__delegate"
                 ;;
@@ -581,7 +587,7 @@ _pebrel() {
 
     case "${cmd}" in
         pebrel)
-            opts="-q -v -e -T -o -h -V --print-events --ref-test --embed --gpui --config-file --socket --daemon --working-directory --shell --hold --command --title --class --option --help --version ctl env window tab pane agent migrate config help"
+            opts="-q -v -e -T -o -h -V --print-events --ref-test --embed --gpui --config-file --socket --daemon --working-directory --shell --hold --command --title --class --option --help --version ctl env window tab pane agent migrate config yubikey help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -2500,7 +2506,7 @@ _pebrel() {
             return 0
             ;;
         pebrel__help)
-            opts="ctl env window tab pane agent migrate config help"
+            opts="ctl env window tab pane agent migrate config yubikey help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -3367,6 +3373,20 @@ _pebrel() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        pebrel__help__yubikey)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         pebrel__migrate)
             opts="-c -d -i -s -h --config-file --dry-run --skip-imports --skip-renames --silent --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -4037,6 +4057,35 @@ _pebrel() {
                 return 0
             fi
             case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        pebrel__yubikey)
+            opts="-h --provider --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --provider)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;
