@@ -1122,6 +1122,13 @@ esac
     ;;
 esac
 ;;
+(yubikey)
+_arguments "${_arguments_options[@]}" : \
+'--provider=[Path to libykcs11. Common Yubico installation paths are detected automatically]:PROVIDER:_files' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_pebrel__help_commands" \
@@ -1446,6 +1453,10 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(yubikey)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -1470,6 +1481,7 @@ _pebrel_commands() {
 'agent:Inspect and drive the AI agents running in panes\: list, send, read, wait' \
 'migrate:Migrate the configuration file' \
 'config:Validate or create the Pebrel configuration' \
+'yubikey:Load a YubiKey PIV provider into the current SSH agent' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'pebrel commands' commands "$@"
@@ -2015,6 +2027,7 @@ _pebrel__help_commands() {
 'agent:Inspect and drive the AI agents running in panes\: list, send, read, wait' \
 'migrate:Migrate the configuration file' \
 'config:Validate or create the Pebrel configuration' \
+'yubikey:Load a YubiKey PIV provider into the current SSH agent' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'pebrel help commands' commands "$@"
@@ -2382,6 +2395,11 @@ _pebrel__help__window__close_commands() {
     local commands; commands=()
     _describe -t commands 'pebrel help window close commands' commands "$@"
 }
+(( $+functions[_pebrel__help__yubikey_commands] )) ||
+_pebrel__help__yubikey_commands() {
+    local commands; commands=()
+    _describe -t commands 'pebrel help yubikey commands' commands "$@"
+}
 (( $+functions[_pebrel__migrate_commands] )) ||
 _pebrel__migrate_commands() {
     local commands; commands=()
@@ -2599,6 +2617,11 @@ _pebrel__window__help__close_commands() {
 _pebrel__window__help__help_commands() {
     local commands; commands=()
     _describe -t commands 'pebrel window help help commands' commands "$@"
+}
+(( $+functions[_pebrel__yubikey_commands] )) ||
+_pebrel__yubikey_commands() {
+    local commands; commands=()
+    _describe -t commands 'pebrel yubikey commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_pebrel" ]; then
