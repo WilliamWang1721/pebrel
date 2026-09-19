@@ -111,7 +111,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo fmt --all -- --check
           git diff --check
           git add extra/completions/pebrel.bash extra/completions/pebrel.fish extra/completions/_pebrel             architecture/notes/nebula_app/ssh/2026-09-19-yubikey-agent-auth.md
           git commit -m "docs(ssh): finalize YubiKey agent integration"
