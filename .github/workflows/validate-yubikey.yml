@@ -1,0 +1,140 @@
+name: Validate YubiKey branch
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/validate-yubikey.yml
+
+permissions:
+  contents: read
+
+jobs:
+  architecture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/yubikey-piv
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - run: python3 -m unittest scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance
+      - run: python3 scripts/check_architecture.py --base 5d473572f907b8d5d7e2daf155a4e485860e5584
+      - run: |
+          mkdir -p "$RUNNER_TEMP/pebrel-contracts"
+          rustc --test --edition 2024 --crate-name nebula_settings nebula_settings/src/lib.rs -o "$RUNNER_TEMP/pebrel-contracts/settings"
+          "$RUNNER_TEMP/pebrel-contracts/settings"
+          CARGO_MANIFEST_DIR="$GITHUB_WORKSPACE/nebula_app" rustc --test --edition 2024 nebula_app/tests/file_line_budget.rs -o "$RUNNER_TEMP/pebrel-contracts/line-budget"
+          "$RUNNER_TEMP/pebrel-contracts/line-budget"
+      - run: cargo test --manifest-path tools/i18n-contract/Cargo.toml --locked
+      - run: python3 -m unittest scripts.tests.test_pebrel_branding scripts.tests.test_windows_resources scripts.tests.test_app_icons scripts.tests.test_ai_session_probe
+
+  native:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, windows-11-arm, macos-26, macos-26-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: "1"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      RUST_TOOLCHAIN: "1.97.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/yubikey-piv
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             build-essential cmake pkg-config zsh libasound2-dev libdbus-1-dev libudev-dev             libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev             libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev             libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev             libxcb-xinput-dev libxcb-xkb-dev libxi-dev
+      - name: Require AppKit SDK
+        if: runner.os == 'macOS'
+        run: |
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          test "${sdk_version%%.*}" -ge 26
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - name: Require native Windows ARM64
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'Arm64') { throw 'ARM64 host required' }
+          $compiler = rustc -vV
+          if ($LASTEXITCODE -ne 0 -or $compiler -notcontains 'host: aarch64-pc-windows-msvc') { throw 'ARM64 compiler required' }
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: yubikey-native
+          extra-key: ${{ runner.os != 'macOS' && '-release-check-v2' || '' }}
+          target: |
+            target/ci
+            ${{ runner.os != 'macOS' && 'target/release' || '' }}
+          legacy-key: ${{ runner.os == 'Windows' && 'windows' || runner.os == 'Linux' && 'linux' || 'macos' }}
+      - name: Prepare Windows runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $architecture = if ('${{ runner.arch }}' -eq 'ARM64') { 'arm64' } else { 'x64' }
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture $architecture
+          ./scripts/tests/windows-runtime.tests.ps1 -Architecture $architecture
+      - run: python scripts/ci_native_tests.py
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: python scripts/check_architecture.py
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: cargo test --locked --manifest-path tools/i18n-contract/Cargo.toml
+      - if: ${{ !cancelled() && runner.os != 'macOS' }}
+        run: cargo check --locked --workspace --release
+
+  macos-release:
+    name: Release workspace (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: "1"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      RUST_TOOLCHAIN: "1.97.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/yubikey-piv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: |
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          test "${sdk_version%%.*}" -ge 26
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: yubikey-native-release-check
+          target: target/release
+          legacy-key: macos
+      - run: cargo check --locked --workspace --release --timings
