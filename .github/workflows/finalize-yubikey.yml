@@ -45,6 +45,12 @@ jobs:
         with:
           toolchain: "1.97.1"
 
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: yubikey-native
+          target: target/ci
+          legacy-key: linux
+
       - name: Regenerate Unix shell completions
         shell: bash
         run: |
