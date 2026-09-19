@@ -34,6 +34,7 @@ pub mod startup;
 pub(crate) mod update_installation;
 #[cfg(feature = "gpui-shell")]
 pub(crate) mod window_chrome;
+pub(crate) mod yubikey;
 
 pub use capabilities::CAPABILITIES;
 
@@ -79,7 +80,7 @@ pub fn beep() {
             // SAFETY: MessageBeep takes a plain sound-type flag and has no
             // pointer arguments or shared state.
             unsafe {
-                windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(
+                windows_sys::Win32::UI::WindowsAndMessaging::MessageBeep(
                     windows_sys::Win32::UI::WindowsAndMessaging::MB_OK,
                 );
             }
