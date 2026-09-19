@@ -1,0 +1,90 @@
+name: Repair PR 140 CI blocker
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/repair-pr140.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: codex/render-settings-cache
+          fetch-depth: 0
+
+      - name: Sync main and apply safe render-settings access
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main
+
+          git rm -f --ignore-unmatch .github/workflows/pr140-one-shot-repair.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          config = Path("nebula_app/src/gpui_shell/config.rs")
+          text = config.read_text(encoding="utf-8")
+          helper = """pub(crate) fn panel_resize(cx: &App) -> bool {
+              cx.try_global::<Settings>().is_some_and(|settings| settings.panel_resize)
+          }
+
+          """
+          if "pub(crate) fn panel_resize(cx: &App) -> bool" not in text:
+              anchor = """pub(crate) fn ui_language(cx: &App) -> UiLanguage {
+              cx.try_global::<Settings>().map(|settings| settings.ui_language).unwrap_or(UiLanguage::EnUs)
+          }
+
+          """
+              if text.count(anchor) != 1:
+                  raise SystemExit("ui_language anchor changed")
+              text = text.replace(anchor, anchor + helper)
+          text = text.replace(
+              "assert_eq!(cx.global::<Settings>().panel_resize, panel_resize);",
+              "assert_eq!(super::panel_resize(cx), panel_resize);",
+          )
+          config.write_text(text, encoding="utf-8")
+
+          workspace = Path("nebula_app/src/gpui_shell/workspace.rs")
+          text = workspace.read_text(encoding="utf-8")
+          direct = "cx.global::<crate::gpui_shell::config::Settings>().panel_resize"
+          if direct in text:
+              text = text.replace(direct, "crate::gpui_shell::config::panel_resize(cx)")
+          if direct in text:
+              raise SystemExit("direct render settings access remains")
+          workspace.write_text(text, encoding="utf-8")
+          PY
+
+          git add -A
+          git diff --cached --check
+          python3 scripts/check_architecture.py --base "$(git rev-parse origin/main)"
+          python3 -m unittest scripts.tests.test_preview_release -v
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+
+      - name: Reproduce former failing GPUI suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p nebula --bin pebrel --features gpui-test-support
+
+      - name: Commit and push repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git commit -m "fix: keep render settings cache safe in test contexts"
+          git push origin HEAD:codex/render-settings-cache
