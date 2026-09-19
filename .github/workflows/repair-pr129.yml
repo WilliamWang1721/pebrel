@@ -49,6 +49,12 @@ jobs:
         with:
           toolchain: "1.97.1"
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux
+          cache-on-failure: true
+          save-if: false
+
       - name: Validate focused change
         shell: bash
         run: |
