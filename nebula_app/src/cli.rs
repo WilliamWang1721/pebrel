@@ -305,6 +305,10 @@ pub enum Subcommands {
     Migrate(MigrateOptions),
     /// Validate or create the Pebrel configuration.
     Config(ConfigOptions),
+    /// Load a YubiKey PIV provider into the current SSH agent.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[command(name = "yubikey")]
+    YubiKey(YubiKeyOptions),
     /// Test system notification (toast) delivery.
     #[cfg(windows)]
     NotifyTest,
@@ -907,6 +911,15 @@ impl ConfigLanguage {
             Self::EnUs => "en-US",
         }
     }
+}
+
+/// Options for loading YubiKey PIV keys into the current SSH agent.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[derive(Args, Debug)]
+pub struct YubiKeyOptions {
+    /// Path to libykcs11. Common Yubico installation paths are detected automatically.
+    #[clap(long, value_hint = ValueHint::FilePath)]
+    pub provider: Option<PathBuf>,
 }
 
 /// Options for the `setup-ai` subcommand.

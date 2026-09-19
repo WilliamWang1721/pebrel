@@ -219,6 +219,7 @@ fn auto_auth_plan_keeps_key_order_and_deduplicates_keys() {
         vec![
             AuthMethod::PrivateKey(PathBuf::from(r"C:\Keys\chosen")),
             AuthMethod::PrivateKey(PathBuf::from(r"C:\Keys\config")),
+            AuthMethod::Agent,
             AuthMethod::StoredPassword,
             AuthMethod::KeyboardInteractive,
             AuthMethod::PromptPassword,

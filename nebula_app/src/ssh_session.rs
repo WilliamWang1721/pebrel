@@ -17,6 +17,8 @@ use nebula_terminal::event_loop::{EventLoopSender, StreamProcessor};
 use nebula_terminal::sync::FairMutex;
 use nebula_terminal::term::Term;
 use russh::client::{self, KeyboardInteractiveAuthResponse};
+#[cfg(unix)]
+use russh::keys::agent::client::AgentClient;
 use russh::keys::ssh_key;
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -121,6 +123,7 @@ fn report_stage<H: SshEventHost>(progress: Option<&H>, stage: SshStage) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum AuthMethod {
     PrivateKey(PathBuf),
+    Agent,
     StoredPassword,
     KeyboardInteractive,
     PromptPassword,
@@ -164,6 +167,7 @@ fn authentication_plan(
         SshAuthMode::Auto => {
             let mut methods = key_methods();
             methods.extend([
+                AuthMethod::Agent,
                 AuthMethod::StoredPassword,
                 AuthMethod::KeyboardInteractive,
                 AuthMethod::PromptPassword,
@@ -825,6 +829,12 @@ async fn authenticate(
                     return Ok(());
                 }
             },
+            AuthMethod::Agent => {
+                if try_agent(session, destination).await? {
+                    clear_secret(&mut reusable_password);
+                    return Ok(());
+                }
+            },
             AuthMethod::StoredPassword => {
                 if !loaded_stored_password {
                     reusable_password =
@@ -1388,6 +1398,12 @@ async fn test_authenticate(
                     return Ok(());
                 }
             },
+            AuthMethod::Agent => {
+                if try_agent(session, destination).await? {
+                    clear_secret(&mut stored_password);
+                    return Ok(());
+                }
+            },
             AuthMethod::StoredPassword => {
                 // A non-empty draft is the user's explicit answer for this
                 // test. Do not let an older credential-manager value turn a
@@ -1488,6 +1504,42 @@ fn key_needs_passphrase(err: &russh::keys::Error, pem: &[u8]) -> bool {
             line.strip_suffix(b"\r").unwrap_or(line).strip_prefix(PKCS8_ENCRYPTED_PREFIX)
                 == Some(PKCS8_ENCRYPTED_SUFFIX)
         })
+}
+
+#[cfg(unix)]
+async fn try_agent(
+    session: &mut ClientSession,
+    destination: &SshDestination,
+) -> Result<bool, SessionError> {
+    let Ok(mut agent) = AgentClient::connect_env().await else {
+        return Ok(false);
+    };
+    let Ok(identities) = agent.request_identities().await else {
+        return Ok(false);
+    };
+
+    for identity in identities {
+        let key = identity.public_key().into_owned();
+        let hash = rsa_hash_for(session, key.algorithm().is_rsa()).await;
+        if lifecycle::authentication(
+            "SSH agent authentication",
+            session.authenticate_publickey_with(&destination.user, key, hash, &mut agent),
+        )
+        .await?
+        .success()
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(not(unix))]
+async fn try_agent(
+    _session: &mut ClientSession,
+    _destination: &SshDestination,
+) -> Result<bool, SessionError> {
+    Ok(false)
 }
 
 /// 用 `path` 的私钥认证一轮。密钥本地不可用（读取/解析/口令问题）返回
