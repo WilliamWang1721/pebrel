@@ -1,0 +1,66 @@
+name: Sync upstream and export source
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/sync-upstream-export.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork main
+        uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: main
+          fetch-depth: 0
+
+      - name: Fast-forward from upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/Kuddev/pebrel.git
+          git fetch upstream main
+          git merge --ff-only upstream/main
+          git push origin HEAD:main
+
+      - name: Create full source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output=pebrel-full-source.zip HEAD
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-full-source
+          path: pebrel-full-source.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Record run ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          SYNCED_SHA="$(git rev-parse HEAD)"
+          git fetch origin automation/sync-export-20260919
+          git worktree add /tmp/sync-export-meta origin/automation/sync-export-20260919
+          cd /tmp/sync-export-meta
+          mkdir -p .github
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "synced_sha=${SYNCED_SHA}"
+          } > .github/last-sync-export-run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/last-sync-export-run.txt
+          git commit -m "chore: record sync/export run ${GITHUB_RUN_ID}"
+          git push origin HEAD:automation/sync-export-20260919
