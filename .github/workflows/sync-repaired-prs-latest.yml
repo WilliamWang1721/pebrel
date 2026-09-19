@@ -1,0 +1,44 @@
+name: Sync repaired PRs to latest main
+
+on:
+  push:
+    branches:
+      - automation/sync-export-20260919
+    paths:
+      - .github/workflows/sync-repaired-prs-latest.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - branch: codex/startup-settings
+            pr: "117"
+          - branch: codex/network-test-details
+            pr: "129"
+          - branch: codex/render-settings-cache
+            pr: "140"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: ${{ matrix.branch }}
+          fetch-depth: 0
+      - name: Merge latest main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git diff --check
+          if [ "${{ matrix.pr }}" != "117" ]; then
+            python3 scripts/check_architecture.py --base "$(git rev-parse origin/main)"
+          fi
+          git push origin HEAD:${{ matrix.branch }}
