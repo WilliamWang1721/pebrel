@@ -54,7 +54,7 @@ pub fn beep() {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
-    /// Minimum spacing between beeps. Long enough tocoalesce a tight BEL
+    /// Minimum spacing between beeps. Long enough to coalesce a tight BEL
     /// loop into a steady tick rather than a screech, short enough that two
     /// separate turns finishing back to back are still both heard.
     const COOLDOWN: Duration = Duration::from_millis(200);
