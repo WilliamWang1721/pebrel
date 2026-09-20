@@ -227,6 +227,7 @@ impl StreamProcessor {
                 OscEvent::PromptMark => {
                     terminal.nebula_add_prompt_mark();
                 },
+                OscEvent::PromptInput => terminal.nebula_mark_prompt_input(),
                 OscEvent::InlineImage { data, width, height } => {
                     let (cell_w, cell_h) = self.window_size.map_or((9.0, 20.0), |ws| {
                         (f32::from(ws.cell_width), f32::from(ws.cell_height))
@@ -297,6 +298,7 @@ pub struct EventLoop<T: tty::EventedPty, U: EventListener> {
     event_proxy: U,
     drain_on_exit: bool,
     ref_test: bool,
+    remote_hook_token: Option<String>,
 }
 
 impl<T, U> EventLoop<T, U>
@@ -323,11 +325,17 @@ where
             event_proxy,
             drain_on_exit,
             ref_test,
+            remote_hook_token: None,
         })
     }
 
     pub fn channel(&self) -> EventLoopSender {
         EventLoopSender { sender: self.tx.clone(), poller: self.poll.clone() }
+    }
+
+    /// Bind in-band hook delivery to this PTY before its reader starts.
+    pub fn set_remote_hook_token(&mut self, token: String) {
+        self.remote_hook_token = Some(token);
     }
 
     /// Drain the channel.
@@ -510,6 +518,9 @@ where
     pub fn spawn(mut self) -> JoinHandle<(Self, State)> {
         thread::spawn_named("PTY reader", move || {
             let mut state = State::default();
+            if let Some(token) = self.remote_hook_token.take() {
+                state.stream.set_remote_hook_token(token);
+            }
             let mut buf = [0u8; READ_BUFFER_SIZE];
 
             let poll_opts = PollMode::Level;
@@ -918,6 +929,44 @@ mod tests {
     use crate::term::test::TermSize;
 
     #[test]
+    fn authenticated_hook_frames_survive_every_chunk_boundary_and_reject_other_panes() {
+        #[derive(Clone, Default)]
+        struct Listener(std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>);
+        impl EventListener for Listener {
+            fn send_event(&self, event: Event) {
+                if let Event::AiHookEnvelope(envelope) = event {
+                    self.0.lock().unwrap().push(envelope);
+                }
+            }
+        }
+        // Base64 for a small envelope; authentication is checked before delivery.
+        let frame = b"\x1b]777;nebula-hook;0123456789abcdef0123456789abcdef;bmVidWxhLWhvb2svMSBzb3VyY2U9Y29kZXgKe30=\x07";
+        for token in [
+            None,
+            Some("ffffffffffffffffffffffffffffffff"),
+            Some("0123456789abcdef0123456789abcdef"),
+        ] {
+            for split in 0..=frame.len() {
+                let listener = Listener::default();
+                let mut terminal =
+                    Term::new(Config::default(), &TermSize::new(80, 24), listener.clone());
+                let mut stream = StreamProcessor::default();
+                if let Some(token) = token {
+                    stream.set_remote_hook_token(token.into());
+                }
+                stream.feed(&mut terminal, &listener, &frame[..split]);
+                stream.feed(&mut terminal, &listener, &frame[split..]);
+                let events = listener.0.lock().unwrap();
+                if token == Some("0123456789abcdef0123456789abcdef") {
+                    assert_eq!(events.as_slice(), [b"nebula-hook/1 source=codex\n{}".to_vec()]);
+                } else {
+                    assert!(events.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn shell_identity_cwd_and_title_keep_wire_order_across_chunk_boundaries() {
         #[derive(Clone, Default)]
         struct Listener(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
@@ -946,6 +995,41 @@ mod tests {
                 "split at {split}"
             );
         }
+    }
+
+    #[test]
+    fn semantic_input_boundary_survives_chunking_and_scrolling() {
+        use crate::index::{Column, Line, Point};
+
+        let bytes = b"\x1b]133;A\x07[first]\r\n>\x1b]133;B\x07pause";
+        for split in 0..=bytes.len() {
+            let mut terminal = Term::new(Config::default(), &TermSize::new(20, 2), VoidListener);
+            let mut stream = StreamProcessor::default();
+            stream.feed(&mut terminal, &VoidListener, &bytes[..split]);
+            stream.feed(&mut terminal, &VoidListener, &bytes[split..]);
+            assert_eq!(terminal.nebula_prompt_input_point(), Some(Point::new(Line(1), Column(1))));
+            stream.feed(&mut terminal, &VoidListener, b"\r\n");
+            assert_eq!(terminal.nebula_prompt_input_point(), Some(Point::new(Line(0), Column(1))));
+            stream.feed(&mut terminal, &VoidListener, b"\x1b]133;C\x07");
+            assert_eq!(terminal.nebula_prompt_input_point(), None);
+        }
+    }
+
+    #[test]
+    fn input_boundaries_require_a_prompt_and_do_not_survive_reflow_or_reset() {
+        let mut terminal = Term::new(Config::default(), &TermSize::new(20, 2), VoidListener);
+        let mut stream = StreamProcessor::default();
+        stream.feed(&mut terminal, &VoidListener, b"\x1b]133;B\x07");
+        assert_eq!(terminal.nebula_prompt_input_point(), None);
+        for ending in [b"\x1bc".as_slice(), b"\x1b]133;D;0\x07", b"\x1b]133;A\x07"] {
+            stream.feed(&mut terminal, &VoidListener, b"\x1b]133;A\x07\x1b]133;B\x07");
+            assert!(terminal.nebula_prompt_input_point().is_some());
+            stream.feed(&mut terminal, &VoidListener, ending);
+            assert_eq!(terminal.nebula_prompt_input_point(), None);
+        }
+        stream.feed(&mut terminal, &VoidListener, b"\x1b]133;A\x07\x1b]133;B\x07");
+        terminal.resize(TermSize::new(10, 2));
+        assert_eq!(terminal.nebula_prompt_input_point(), None);
     }
 
     #[test]
