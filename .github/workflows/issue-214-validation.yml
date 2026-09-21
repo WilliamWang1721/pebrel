@@ -1,0 +1,20 @@
+name: Issue 214 Rust validation
+on:
+  push:
+    branches: [validation/issue-214-rust]
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config libasound2-dev libdbus-1-dev libudev-dev libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xinput-dev libxcb-xkb-dev libxi-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - run: cargo test --locked -p nebula_terminal kitty_graphics
+      - run: cargo check --locked -p nebula_app
