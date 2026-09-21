@@ -21,7 +21,9 @@ const MAX_QUEUED_BYTES: usize = 32 * 1024 * 1024;
 pub(super) struct PendingInlineImage {
     sequence: u64,
     data: Arc<Vec<u8>>,
+    rgba_size: Option<(u32, u32)>,
     abs_line: usize,
+    column: usize,
     display_width: f32,
     display_height: f32,
     row_span: usize,
@@ -31,6 +33,7 @@ pub(super) struct PendingInlineImage {
 pub(super) struct InlineImage {
     pub image: Arc<RenderImage>,
     pub abs_line: usize,
+    pub column: usize,
     /// Display size reported by the terminal protocol, in device pixels.
     pub display_width: f32,
     pub display_height: f32,
@@ -52,13 +55,17 @@ impl InlineImageStore {
     pub fn enqueue(
         &mut self,
         data: Arc<Vec<u8>>,
+        rgba_size: Option<(u32, u32)>,
         abs_line: usize,
+        column: usize,
         display_width: f32,
         display_height: f32,
         row_span: usize,
     ) -> Result<(), &'static str> {
-        if data.len() > MAX_IMAGE_ENCODED_BYTES {
-            return Err("encoded terminal image exceeds 12 MiB");
+        let max_input_bytes =
+            if rgba_size.is_some() { MAX_IMAGE_DECODED_BYTES } else { MAX_IMAGE_ENCODED_BYTES };
+        if data.len() > max_input_bytes {
+            return Err("terminal image exceeds its input size limit");
         }
         if !display_width.is_finite()
             || !display_height.is_finite()
@@ -83,7 +90,9 @@ impl InlineImageStore {
         self.queued.push_back(PendingInlineImage {
             sequence,
             data,
+            rgba_size,
             abs_line,
+            column,
             display_width,
             display_height,
             row_span: row_span.max(1),
@@ -132,18 +141,44 @@ impl InlineImageStore {
 }
 
 pub(super) fn decode(pending: PendingInlineImage) -> Result<(u64, InlineImage), String> {
-    let (render_image, decoded_bytes) = decode_bytes(pending.data.as_slice())?;
+    let (render_image, decoded_bytes) = match pending.rgba_size {
+        Some((width, height)) => decode_raw_rgba(pending.data.as_slice(), width, height)?,
+        None => decode_bytes(pending.data.as_slice())?,
+    };
     Ok((
         pending.sequence,
         InlineImage {
             image: render_image,
             abs_line: pending.abs_line,
+            column: pending.column,
             display_width: pending.display_width,
             display_height: pending.display_height,
             row_span: pending.row_span,
             decoded_bytes,
         },
     ))
+}
+
+fn decode_raw_rgba(
+    data: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<(Arc<RenderImage>, usize), String> {
+    let decoded_bytes = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(4))
+        .and_then(|bytes| usize::try_from(bytes).ok())
+        .ok_or_else(|| "terminal image allocation size overflow".to_owned())?;
+    if decoded_bytes == 0 || decoded_bytes > MAX_IMAGE_DECODED_BYTES || data.len() != decoded_bytes {
+        return Err("invalid terminal RGBA image".to_owned());
+    }
+    let mut bgra = data.to_vec();
+    for pixel in bgra.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+    }
+    let image = image::RgbaImage::from_raw(width, height, bgra)
+        .ok_or_else(|| "invalid terminal RGBA image".to_owned())?;
+    Ok((Arc::new(RenderImage::new([Frame::new(image)])), decoded_bytes))
 }
 
 pub(super) fn decode_bytes(data: &[u8]) -> Result<(Arc<RenderImage>, usize), String> {
@@ -237,7 +272,9 @@ mod tests {
         PendingInlineImage {
             sequence: 7,
             data: Arc::new(data),
+            rgba_size: None,
             abs_line: 11,
+            column: 0,
             display_width: 2.0,
             display_height: 1.0,
             row_span: 1,
@@ -256,9 +293,9 @@ mod tests {
         let mut store = InlineImageStore::default();
         let chunk = Arc::new(vec![0; 3 * 1024 * 1024]);
         for _ in 0..10 {
-            store.enqueue(chunk.clone(), 0, 1.0, 1.0, 1).unwrap();
+            store.enqueue(chunk.clone(), None, 0, 0, 1.0, 1.0, 1).unwrap();
         }
-        assert!(store.enqueue(chunk, 0, 1.0, 1.0, 1).is_err());
+        assert!(store.enqueue(chunk, None, 0, 0, 1.0, 1.0, 1).is_err());
     }
 
     #[test]
@@ -339,6 +376,7 @@ mod tests {
                     InlineImage {
                         image: Arc::new(RenderImage::new([Frame::new(rgba)])),
                         abs_line: sequence,
+                        column: 0,
                         display_width: 1.0,
                         display_height: 1.0,
                         row_span: 1,
@@ -359,6 +397,7 @@ mod tests {
                 InlineImage {
                     image: Arc::new(RenderImage::new([Frame::new(image::RgbaImage::new(1, 1))])),
                     abs_line: 4,
+                    column: 0,
                     display_width: 1.0,
                     display_height: 1.0,
                     row_span: 2,

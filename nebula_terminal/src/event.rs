@@ -34,7 +34,14 @@ pub enum Event {
     /// `abs_line` anchors the image's top row in the grid's absolute line
     /// numbering (see `Grid::scrolled_out`); `width`/`height` are the display
     /// size in pixels, already scaled to fit the terminal width.
-    InlineImage { data: Arc<Vec<u8>>, abs_line: usize, width: f32, height: f32 },
+    InlineImage {
+        data: Arc<Vec<u8>>,
+        rgba_size: Option<(u32, u32)>,
+        abs_line: usize,
+        column: usize,
+        width: f32,
+        height: f32,
+    },
 
     /// OSC 133;C — a command started executing in this pane.
     CommandStart,
@@ -109,8 +116,8 @@ impl Debug for Event {
             Event::PtyWrite(text) => write!(f, "PtyWrite({text})"),
             Event::Title(title) => write!(f, "Title({title})"),
             Event::CwdReport(cwd) => write!(f, "CwdReport({cwd})"),
-            Event::InlineImage { data, abs_line, width, height } => {
-                write!(f, "InlineImage({} bytes @{abs_line}, {width}x{height})", data.len())
+            Event::InlineImage { data, abs_line, column, width, height, .. } => {
+                write!(f, "InlineImage({} bytes @{abs_line}:{column}, {width}x{height})", data.len())
             },
             Event::CommandStart => write!(f, "CommandStart"),
             Event::CommandDone { exit_code } => write!(f, "CommandDone({exit_code:?})"),
