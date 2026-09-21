@@ -17,17 +17,41 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: Apply exact local patch
         shell: bash
         run: |
           base64 --decode < .github/validation/macos-auto-update.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/update.patch"
-          echo "649b2af49152418e220ac995ed5edc383db2a15ebcb5092219f048ea67600ef9  $RUNNER_TEMP/update.patch" | sha256sum --check --strict
+          echo "403cbf40fbdb4ed4fd83c1dd5aab78358be5adbfd9a750ed24e3fa2d58db1efe  $RUNNER_TEMP/update.patch" | sha256sum --check --strict
           git apply --check "$RUNNER_TEMP/update.patch"
           git apply "$RUNNER_TEMP/update.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("nebula_app/src/platform/update_installation.rs")
+          s = p.read_text()
+          s = s.replace(
+              "use std::process::Child;\n",
+              "use std::process::Child;\n#[cfg(target_os = \"macos\")]\nuse std::process::Command;\n",
+              1,
+          )
+          s = s.replace(
+              "fn verify_macos_bundle(bundle: &Path, version: &str) -> io::Result<()> {\n    use std::process::Command;\n",
+              "fn verify_macos_bundle(bundle: &Path, version: &str) -> io::Result<()> {\n",
+              1,
+          )
+          p.write_text(s)
+          PY
           git diff --check
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+          python3 - <<'PY'
+          import hashlib, subprocess
+          patch = subprocess.check_output(["git", "diff", "--binary"])
+          actual = hashlib.sha256(patch).hexdigest()
+          expected = "649b2af49152418e220ac995ed5edc383db2a15ebcb5092219f048ea67600ef9"
+          if actual != expected:
+              raise SystemExit(f"patched tree differs from sandbox patch: {actual}")
+          PY
       - name: Architecture contracts
         run: |
           python3 scripts/check_platform_cfg.py
@@ -47,12 +71,31 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: Apply exact local patch
         shell: bash
         run: |
           base64 --decode < .github/validation/macos-auto-update.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/update.patch"
           git apply --check "$RUNNER_TEMP/update.patch"
           git apply "$RUNNER_TEMP/update.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("nebula_app/src/platform/update_installation.rs")
+          s = p.read_text()
+          s = s.replace(
+              "use std::process::Child;\n",
+              "use std::process::Child;\n#[cfg(target_os = \"macos\")]\nuse std::process::Command;\n",
+              1,
+          )
+          s = s.replace(
+              "fn verify_macos_bundle(bundle: &Path, version: &str) -> io::Result<()> {\n    use std::process::Command;\n",
+              "fn verify_macos_bundle(bundle: &Path, version: &str) -> io::Result<()> {\n",
+              1,
+          )
+          p.write_text(s)
+          PY
           git diff --check
       - uses: dtolnay/rust-toolchain@stable
         with:
