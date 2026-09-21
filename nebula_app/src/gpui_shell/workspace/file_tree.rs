@@ -316,7 +316,7 @@ impl NebulaWorkspace {
         let editing_path = self.file_tree_path.is_some();
         let theme = cx.theme();
         let muted = theme.muted_foreground;
-        let language = super::workspace_ui_language();
+        let language = crate::gpui_shell::config::ui_language(cx);
         let search_options = self.side_panel.file_search_options();
         let search_active = !self.side_panel.search.trim().is_empty();
         let search_pending = self.side_panel.file_search_pending();
