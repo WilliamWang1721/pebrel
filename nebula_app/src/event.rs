@@ -2894,11 +2894,11 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                             *self.ctx.dirty = true;
                         }
                     },
-                    TerminalEvent::InlineImage { data, abs_line, width, height } => {
+                    TerminalEvent::InlineImage { data, rgba_size, abs_line, width, height, .. } => {
                         // Decode off the PTY thread (here, on the UI loop) and
                         // anchor the pixels to the pane. Textures upload lazily
                         // on first draw.
-                        match crate::renderer::image::decode_png_bytes(&data) {
+                        match crate::renderer::image::decode_inline_bytes(&data, rgba_size) {
                             Ok((px_w, px_h, rgba)) => {
                                 use std::sync::atomic::{AtomicU64, Ordering};
                                 static NEXT_INLINE_IMAGE_ID: AtomicU64 = AtomicU64::new(1);

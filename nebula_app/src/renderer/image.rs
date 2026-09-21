@@ -128,6 +128,13 @@ pub fn decode_png_bytes(_png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
     Err("PNG support is not enabled for this build".to_owned())
 }
 
+pub fn decode_inline_bytes(
+    data: &[u8],
+    rgba_size: Option<(u32, u32)>,
+) -> Result<(u32, u32, Vec<u8>), String> {
+    rgba_size.map_or_else(|| decode_png_bytes(data), |(width, height)| Ok((width, height, data.to_vec())))
+}
+
 #[cfg(all(feature = "png", not(target_os = "macos")))]
 fn decode_png_reader<R: std::io::Read>(reader: R) -> Result<DecodedImage, String> {
     let mut decoder = png::Decoder::new(reader);

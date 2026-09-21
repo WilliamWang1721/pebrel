@@ -722,11 +722,13 @@ impl Element for TerminalElement {
             let viewport_top = bounds.origin.y.as_f32();
             let viewport_bottom = viewport_top + bounds.size.height.as_f32();
             for inline in inline_images {
+                let x = bounds.origin.x + layout.cell_width * inline.column as f32;
                 let y = bounds.origin.y
                     + layout.line_height * (inline.abs_line as i64 - viewport_top_abs) as f32;
                 let mut width = inline.display_width / device_scale;
                 let mut height = inline.display_height / device_scale;
-                let fit = (bounds.size.width.as_f32() / width.max(1.0)).min(1.0);
+                let fit =
+                    ((bounds.origin.x + bounds.size.width - x).as_f32() / width.max(1.0)).min(1.0);
                 width *= fit;
                 height *= fit;
                 let image_top = y.as_f32();
@@ -734,7 +736,7 @@ impl Element for TerminalElement {
                     continue;
                 }
                 let target = Bounds::new(
-                    point(bounds.origin.x, y),
+                    point(x, y),
                     size(px(width.max(1.0)), px(height.max(1.0))),
                 );
                 window.with_content_mask(Some(ContentMask { bounds }), |window| {

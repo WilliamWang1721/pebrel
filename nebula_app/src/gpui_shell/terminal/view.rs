@@ -620,10 +620,10 @@ impl TerminalView {
                     cx.notify();
                 }
             },
-            TermEvent::InlineImage { data, abs_line, width, height } => {
+            TermEvent::InlineImage { data, rgba_size, abs_line, column, width, height } => {
                 let cell_height = f32::from(self.window_size.cell_height.max(1));
                 let row_span = (height / cell_height).ceil().max(1.0) as usize;
-                match self.inline_images.enqueue(data, abs_line, width, height, row_span) {
+                match self.inline_images.enqueue(data, rgba_size, abs_line, column, width, height, row_span) {
                     Ok(()) => self.drive_inline_image_decode(cx),
                     Err(error) => log::warn!("terminal image dropped: {error}"),
                 }

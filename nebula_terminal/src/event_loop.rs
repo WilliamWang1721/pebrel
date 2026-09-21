@@ -18,6 +18,7 @@ use polling::{Event as PollingEvent, Events, PollMode, Poller};
 use crate::event::{self, Event, EventListener, WindowSize};
 use crate::grid::Dimensions as _;
 use crate::index::{Column, Line};
+use crate::kitty_graphics::{KittyEvent, KittyGraphics};
 use crate::osc_cwd::OscEvent;
 use crate::sync::FairMutex;
 use crate::term::Term;
@@ -163,6 +164,7 @@ fn conpty_cursor_probe(_pid: u32) -> Option<ConhostCursor> {
 pub struct StreamProcessor {
     parser: ansi::Processor,
     cwd_sniffer: crate::osc_cwd::CwdSniffer,
+    kitty_graphics: KittyGraphics,
     window_size: Option<WindowSize>,
     remote_hook_token: Option<String>,
 }
@@ -194,41 +196,54 @@ impl StreamProcessor {
         event_proxy: &U,
         bytes: &[u8],
     ) {
-        let osc_events = self.cwd_sniffer.feed(bytes);
+        enum StreamEvent {
+            Osc(OscEvent),
+            Kitty(KittyEvent),
+        }
+
+        let mut events: Vec<_> = self
+            .cwd_sniffer
+            .feed(bytes)
+            .into_iter()
+            .map(|(offset, event)| (offset, StreamEvent::Osc(event)))
+            .chain(
+                self.kitty_graphics
+                    .feed(bytes)
+                    .into_iter()
+                    .map(|(offset, event)| (offset, StreamEvent::Kitty(event))),
+            )
+            .collect();
+        events.sort_unstable_by_key(|(offset, _)| *offset);
+
         let mut advanced = 0;
-        for (offset, event) in osc_events {
-            // Titles and shell identity/cwd reports must retain wire order:
-            // coalescing a remote cwd past a parent prompt would attribute that
-            // directory to the parent shell's completion history.
+        for (offset, event) in events {
             self.parser.advance(terminal, &bytes[advanced..offset]);
             advanced = offset;
             match event {
-                OscEvent::Cwd(cwd) => event_proxy.send_event(Event::CwdReport(cwd)),
-                OscEvent::CommandStart => {
+                StreamEvent::Osc(OscEvent::Cwd(cwd)) => event_proxy.send_event(Event::CwdReport(cwd)),
+                StreamEvent::Osc(OscEvent::CommandStart) => {
                     terminal.nebula_end_prompt();
                     event_proxy.send_event(Event::CommandStart);
                 },
-                OscEvent::CommandDone { exit_code } => {
+                StreamEvent::Osc(OscEvent::CommandDone { exit_code }) => {
                     terminal.nebula_end_prompt();
                     event_proxy.send_event(Event::CommandDone { exit_code })
                 },
-                OscEvent::UserVar { name, value } => {
+                StreamEvent::Osc(OscEvent::UserVar { name, value }) => {
                     event_proxy.send_event(Event::UserVar { name, value })
                 },
-                OscEvent::Notify(text) => event_proxy.send_event(Event::Notify(text)),
-                OscEvent::Progress { state, value } => {
+                StreamEvent::Osc(OscEvent::Notify(text)) => event_proxy.send_event(Event::Notify(text)),
+                StreamEvent::Osc(OscEvent::Progress { state, value }) => {
                     event_proxy.send_event(Event::Progress { state, value })
                 },
-                OscEvent::RemoteHook { token, envelope } => {
+                StreamEvent::Osc(OscEvent::RemoteHook { token, envelope }) => {
                     if self.remote_hook_token.as_deref() == Some(token.as_str()) {
                         event_proxy.send_event(Event::AiHookEnvelope(envelope));
                     }
                 },
-                OscEvent::PromptMark => {
-                    terminal.nebula_add_prompt_mark();
-                },
-                OscEvent::PromptInput => terminal.nebula_mark_prompt_input(),
-                OscEvent::InlineImage { data, width, height } => {
+                StreamEvent::Osc(OscEvent::PromptMark) => terminal.nebula_add_prompt_mark(),
+                StreamEvent::Osc(OscEvent::PromptInput) => terminal.nebula_mark_prompt_input(),
+                StreamEvent::Osc(OscEvent::InlineImage { data, width, height }) => {
                     let (cell_w, cell_h) = self.window_size.map_or((9.0, 20.0), |ws| {
                         (f32::from(ws.cell_width), f32::from(ws.cell_height))
                     });
@@ -238,14 +253,32 @@ impl StreamProcessor {
                     let disp_h = height as f32 * scale;
                     let rows = (disp_h / cell_h).ceil().max(1.0) as usize;
                     let abs_line = terminal.nebula_cursor_abs_line();
+                    let column = terminal.grid().cursor.point.column.0;
                     for _ in 0..=rows {
                         self.parser.advance(terminal, b"\r\n");
                     }
                     event_proxy.send_event(Event::InlineImage {
                         data: std::sync::Arc::new(data),
+                        rgba_size: None,
                         abs_line,
+                        column,
                         width: disp_w,
                         height: disp_h,
+                    });
+                },
+                StreamEvent::Kitty(KittyEvent::Query { image_id }) => event_proxy
+                    .send_event(Event::PtyWrite(format!("\x1b_Gi={image_id};OK\x1b\\"))),
+                StreamEvent::Kitty(KittyEvent::Image { rgba, width, height, columns, rows }) => {
+                    let (cell_w, cell_h) = self.window_size.map_or((9.0, 20.0), |ws| {
+                        (f32::from(ws.cell_width), f32::from(ws.cell_height))
+                    });
+                    event_proxy.send_event(Event::InlineImage {
+                        data: std::sync::Arc::new(rgba),
+                        rgba_size: Some((width, height)),
+                        abs_line: terminal.nebula_cursor_abs_line(),
+                        column: terminal.grid().cursor.point.column.0,
+                        width: if columns == 0 { width as f32 } else { f32::from(columns) * cell_w },
+                        height: if rows == 0 { height as f32 } else { f32::from(rows) * cell_h },
                     });
                 },
             }
