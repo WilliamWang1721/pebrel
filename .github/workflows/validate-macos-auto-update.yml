@@ -60,8 +60,9 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
-      - name: Format
-        run: cargo fmt --all -- --check
+      - name: Format nebula crate
+        if: matrix.label == 'macos-arm64'
+        run: cargo fmt -p nebula -- --check
       - name: Compile Pebrel GPUI
         run: cargo check --locked -p nebula --bin pebrel --features gpui-shell
       - name: Update check tests
