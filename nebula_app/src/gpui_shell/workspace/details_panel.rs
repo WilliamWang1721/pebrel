@@ -146,6 +146,20 @@ impl NebulaWorkspace {
         }
     }
 
+    fn dual_file_browsers(&self, cx: &App) -> bool {
+        self.side_panel.view == PanelView::Files
+            && self.active_document_section(cx).is_none()
+            && self.split_file_pair(cx).is_some()
+    }
+
+    fn rendered_width(&self, window: &Window, cx: &App) -> f32 {
+        if self.details_panel.resize.is_some() {
+            return self.details_panel.width;
+        }
+        let minimum = if self.dual_file_browsers(cx) { MIN_WIDTH * 2.0 } else { MIN_WIDTH };
+        panel_width(self.details_panel.width.max(minimum), f32::from(window.viewport_size().width))
+    }
+
     fn render_details_header(
         &self,
         width: f32,
@@ -311,17 +325,30 @@ impl NebulaWorkspace {
         }
         let width = if !open && self.details_panel.closing_width.is_some() {
             self.details_panel.closing_width.unwrap()
-        } else if self.details_panel.resize.is_some() {
-            self.details_panel.width
         } else {
-            panel_width(self.details_panel.width, f32::from(window.viewport_size().width))
+            self.rendered_width(window, cx)
         };
         let section = self.active_document_section(cx);
+        let dual_files = open && section.is_none() && self.dual_file_browsers(cx);
         let remote = open && section.is_none() && self.route_remote_browser(window, cx);
         let panel = if section.is_some() {
             self.details_panel.document.as_ref().unwrap().1.clone().into_any_element()
         } else {
             match self.side_panel.view {
+                PanelView::Files if remote && dual_files => {
+                    let local = self.render_file_tree(cx);
+                    let remote = self.render_remote_files(cx);
+                    let border = cx.theme().border;
+                    div()
+                        .flex()
+                        .flex_row()
+                        .size_full()
+                        .min_w_0()
+                        .child(div().flex_1().min_w_0().h_full().overflow_hidden().child(local))
+                        .child(div().w(px(1.0)).h_full().flex_shrink_0().bg(border))
+                        .child(div().flex_1().min_w_0().h_full().overflow_hidden().child(remote))
+                        .into_any_element()
+                },
                 PanelView::Files if remote => self.render_remote_files(cx),
                 PanelView::Files => self.render_file_tree(cx),
                 PanelView::Git => self.render_git_tree(window, cx),
@@ -373,11 +400,7 @@ impl NebulaWorkspace {
         if !self.side_panel.open || self.reader_focus_active(cx) || self.settings_open {
             return None;
         }
-        let width = if self.details_panel.resize.is_some() {
-            self.details_panel.width
-        } else {
-            panel_width(self.details_panel.width, f32::from(window.viewport_size().width))
-        };
+        let width = self.rendered_width(window, cx);
         Some(
             div()
                 .id("workspace-details-resize")
@@ -405,6 +428,7 @@ impl NebulaWorkspace {
                     MouseButton::Left,
                     cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                         gpui_component::GlobalState::suppress_text_selection(cx);
+                        this.details_panel.width = width;
                         this.details_panel.resize = Some(super::sidebar_resize::ResizeDrag::new(
                             f32::from(event.position.x),
                             width,
@@ -423,13 +447,17 @@ impl NebulaWorkspace {
         window: &Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(drag) = &mut self.details_panel.resize else { return };
+        if self.details_panel.resize.is_none() {
+            return;
+        }
+        let dual_files = self.dual_file_browsers(cx);
+        let drag = self.details_panel.resize.as_mut().unwrap();
         if event.pressed_button != Some(MouseButton::Left) || !window.is_window_active() {
             self.cancel_details_panel_resize(cx);
             return;
         }
         let maximum = panel_width(MAX_WIDTH, f32::from(window.viewport_size().width));
-        let minimum = MIN_WIDTH.min(maximum);
+        let minimum = (if dual_files { MIN_WIDTH * 2.0 } else { MIN_WIDTH }).min(maximum);
         let raw = drag.start_width + drag.start_x - f32::from(event.position.x);
         self.details_panel.width = drag.width(raw, minimum, maximum);
         cx.notify();

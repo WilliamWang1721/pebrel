@@ -6,8 +6,8 @@
 //! （看当前这台机器上的文件）就有了两个入口，而且用户得先知道自己在本地还是
 //! 远端才能选对——那本来是程序该知道的事。
 //!
-//! 所以判据是：**抽屉的"文件"视图渲染谁，由聚焦 pane 的身份决定。** 聚焦
-//! SSH pane 就画远端列表，切回本地 tab 就自动翻回本地目录树。浏览状态按
+//! 通常由聚焦 pane 决定；同一分屏同时存在本地 pane 和已连接 SSH pane 时，
+//! 文件页并排保留两边目录树，直接复用本地拖拽到 SFTP 的上传链路。浏览状态按
 //! pane 留着，切回来还在原来那个目录。
 //!
 //! # 异步怎么回到界面
@@ -244,7 +244,28 @@ impl NebulaWorkspace {
         Some((view.pane_id, destination))
     }
 
-    /// 每帧把抽屉路由到聚焦 pane 的身份上。
+    /// 当前分屏里第一组可直接互传的本地目录与已连接 SSH pane。
+    pub(super) fn split_file_pair(&self, cx: &App) -> Option<(PathBuf, (u64, String))> {
+        let super::WorkspaceTab::Terminal { panes, tree, .. } = self.tabs.get(self.active)? else {
+            return None;
+        };
+        let mut local = None;
+        let mut remote = None;
+        for pane_id in super::pane_header::pane_order(tree) {
+            let view = panes.iter().find(|pane| pane.id == pane_id)?.view.read(cx);
+            if let Some(destination) = view.ready_ssh_destination() {
+                remote.get_or_insert_with(|| (pane_id, destination.to_owned()));
+            } else if local.is_none() {
+                local = view.local_cwd();
+            }
+            if local.is_some() && remote.is_some() {
+                break;
+            }
+        }
+        local.zip(remote)
+    }
+
+    /// 每帧把抽屉路由到聚焦 SSH；本地 + SSH 分屏时保持那台 SSH 可见。
     ///
     /// 返回抽屉这一帧是否该画远端内容。这是**唯一**的判据入口：渲染、跟随、
     /// 空态文案都问它，不各自重新判断一遍，否则三处判据迟早会分叉。
@@ -253,8 +274,10 @@ impl NebulaWorkspace {
         window: &mut Window,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        let focused = self.focused_remote_pane(cx);
-        match focused {
+        let target = self
+            .focused_remote_pane(cx)
+            .or_else(|| self.split_file_pair(cx).map(|(_, remote)| remote));
+        match target {
             Some((pane, destination)) => {
                 let rebind = self.remote_browser.pane != Some(pane)
                     || self.remote_browser.destination != destination;
