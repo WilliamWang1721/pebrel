@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           base64 --decode < .github/validation/macos-auto-update.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/update.patch"
-          echo "403cbf40fbdb4ed4fd83c1dd5aab78358be5adbfd9a750ed24e3fa2d58db1efe  $RUNNER_TEMP/update.patch" | sha256sum --check --strict
+          echo "649b2af49152418e220ac995ed5edc383db2a15ebcb5092219f048ea67600ef9  $RUNNER_TEMP/update.patch" | sha256sum --check --strict
           git apply --check "$RUNNER_TEMP/update.patch"
           git apply "$RUNNER_TEMP/update.patch"
           git diff --check
