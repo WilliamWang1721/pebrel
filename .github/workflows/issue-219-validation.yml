@@ -1,0 +1,170 @@
+name: Issue 219 validation
+
+on:
+  push:
+    branches: [issue-219-dual-file-trees]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  RUST_TOOLCHAIN: "1.97.1"
+  PYTHONUTF8: "1"
+
+jobs:
+  static:
+    name: Format and architecture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test architecture guardrails
+        run: >-
+          python3 -m unittest
+          scripts.tests.test_architecture_budgets
+          scripts.tests.test_architecture_dependencies
+          scripts.tests.test_architecture_governance
+      - name: Check architecture
+        run: python3 scripts/check_architecture.py --base 3050374343f0b3b1821c38ffaedb3a75201b6355
+      - name: Test shared settings
+        run: |
+          mkdir -p "$RUNNER_TEMP/pebrel-contracts"
+          rustc --test --edition 2024 --crate-name nebula_settings \
+            nebula_settings/src/lib.rs -o "$RUNNER_TEMP/pebrel-contracts/settings"
+          "$RUNNER_TEMP/pebrel-contracts/settings"
+      - name: Test Rust line-budget adapter
+        env:
+          CARGO_MANIFEST_DIR: ${{ github.workspace }}/nebula_app
+        run: |
+          rustc --test --edition 2024 nebula_app/tests/file_line_budget.rs \
+            -o "$RUNNER_TEMP/pebrel-contracts/line-budget"
+          "$RUNNER_TEMP/pebrel-contracts/line-budget"
+      - name: Test i18n contracts
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/pebrel-i18n-contract
+        run: cargo test --manifest-path tools/i18n-contract/Cargo.toml --locked
+      - name: Test compatibility contracts
+        run: >-
+          python3 -m unittest
+          scripts.tests.test_pebrel_branding
+          scripts.tests.test_windows_resources
+          scripts.tests.test_app_icons
+          scripts.tests.test_ai_session_probe
+
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake libasound2-dev libdbus-1-dev libegl1-mesa-dev \
+            libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libudev-dev \
+            libvulkan1 libwayland-dev libx11-dev libx11-xcb-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcb-xinput-dev libxcb-xkb-dev libxcb1-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev mesa-vulkan-drivers pkg-config zsh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Test workspace
+        run: cargo test --locked --workspace
+      - name: Test full GPUI suite
+        run: cargo test --locked -p nebula --features gpui-test-support
+      - name: Test native shell contracts
+        run: >-
+          python3 -m unittest scripts.tests.test_shell_integration
+          scripts.conformance.tests.test_posix_lifecycle -v
+      - name: Build GPUI release
+        run: cargo build --locked --release -p nebula --bin pebrel --features gpui-shell
+
+  macos:
+    name: macOS ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            architecture: aarch64
+            native_architecture: arm64
+          - runner: macos-26-intel
+            architecture: x86_64
+            native_architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "${{ matrix.native_architecture }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Test workspace
+        run: cargo test --locked --workspace
+      - name: Test full GPUI suite
+        run: cargo test --locked -p nebula --features gpui-test-support
+      - name: Test native shell contracts
+        run: >-
+          python3 -m unittest scripts.tests.test_shell_integration
+          scripts.conformance.tests.test_posix_lifecycle -v
+      - name: Build GPUI release
+        run: cargo build --locked --release -p nebula --bin pebrel --features gpui-shell
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Prepare pinned Windows console runtime
+        shell: pwsh
+        run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
+      - name: Test workspace
+        run: cargo test --locked --workspace
+      - name: Test full GPUI suite
+        run: cargo test --locked -p nebula --features gpui-test-support
+      - name: Test native harness contracts
+        run: >-
+          python -m unittest
+          scripts.conformance.tests.test_lifecycle
+          scripts.conformance.tests.test_scrollback
+      - name: Build GPUI release
+        run: cargo build --locked --release -p nebula --bin pebrel --features gpui-shell
