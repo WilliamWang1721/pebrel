@@ -1,0 +1,55 @@
+name: Upstream PR control
+
+on:
+  push:
+    branches:
+      - automation/upstream-pr-control
+    paths:
+      - .github/workflows/upstream-pr-control.yml
+      - .github/upstream-pr-command.json
+
+permissions:
+  contents: read
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply PR command
+        if: ${{ hashFiles('.github/upstream-pr-command.json') != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_PR_PAT }}
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+
+          c = json.load(open(".github/upstream-pr-command.json"))
+          assert c["repo"] == "Kuddev/pebrel"
+          n = str(c["number"])
+          url = f"https://github.com/{c['repo']}/pull/{n}"
+          action = c["action"]
+
+          if action == "edit":
+              cmd = ["gh", "pr", "edit", url]
+              if "title" in c:
+                  cmd += ["--title", c["title"]]
+              if "body" in c:
+                  cmd += ["--body", c["body"]]
+          elif action == "ready":
+              cmd = ["gh", "pr", "ready", url]
+          elif action == "draft":
+              cmd = ["gh", "pr", "ready", "--undo", url]
+          elif action == "close":
+              cmd = ["gh", "pr", "close", url]
+          elif action == "reopen":
+              cmd = ["gh", "pr", "reopen", url]
+          elif action == "comment":
+              cmd = ["gh", "pr", "comment", url, "--body", c["body"]]
+          elif action == "reviewer":
+              cmd = ["gh", "pr", "edit", url, "--add-reviewer", c["reviewer"]]
+          else:
+              raise ValueError(action)
+
+          subprocess.run(cmd, check=True)
+          PY
