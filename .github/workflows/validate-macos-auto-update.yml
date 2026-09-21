@@ -20,6 +20,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
       - name: Apply exact local patch
         shell: bash
         run: |
@@ -43,12 +47,13 @@ jobs:
           )
           p.write_text(s)
           PY
+          cargo fmt -p nebula
           git diff --check
           python3 - <<'PY'
           import hashlib, subprocess
           patch = subprocess.check_output(["git", "diff", "--binary"])
           actual = hashlib.sha256(patch).hexdigest()
-          expected = "649b2af49152418e220ac995ed5edc383db2a15ebcb5092219f048ea67600ef9"
+          expected = "883f729820d05dc36cc93f9b3fef48496fa9594ec23177e9f7fb140d19e1bf01"
           if actual != expected:
               raise SystemExit(f"patched tree differs from sandbox patch: {actual}")
           PY
@@ -74,6 +79,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
       - name: Apply exact local patch
         shell: bash
         run: |
@@ -96,14 +105,16 @@ jobs:
           )
           p.write_text(s)
           PY
+          cargo fmt -p nebula
           git diff --check
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          components: rustfmt
-      - name: Format nebula crate
-        if: matrix.label == 'macos-arm64'
-        run: cargo fmt -p nebula -- --check
+          python3 - <<'PY'
+          import hashlib, subprocess
+          patch = subprocess.check_output(["git", "diff", "--binary"])
+          actual = hashlib.sha256(patch).hexdigest()
+          expected = "883f729820d05dc36cc93f9b3fef48496fa9594ec23177e9f7fb140d19e1bf01"
+          if actual != expected:
+              raise SystemExit(f"patched tree differs from sandbox patch: {actual}")
+          PY
       - name: Compile Pebrel GPUI
         run: cargo check --locked -p nebula --bin pebrel --features gpui-shell
       - name: Update check tests
