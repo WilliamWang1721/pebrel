@@ -12,12 +12,14 @@ use nebula_terminal::event::EventListener;
 use nebula_terminal::grid::{Dimensions, Scroll};
 use nebula_terminal::index::{Column, Line, Point, Side};
 use nebula_terminal::selection::SelectionType;
-use nebula_terminal::term::{ClipboardType, TermMode};
+use nebula_terminal::term::cell::Flags;
+use nebula_terminal::term::{ClipboardType, Term, TermMode};
 
 use crate::config::{BindingMode, MouseEvent};
 use crate::display::hint::HintMatch;
 use crate::event::{ClickState, Event, EventType};
 use crate::message_bar;
+use crate::runtime_api::{RuntimeKey, RuntimeKeyModifiers};
 use crate::scheduler::{TimerId, Topic};
 
 use super::{ActionContext, Execute, Processor};
@@ -1397,6 +1399,27 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         self.ctx.window().set_mouse_cursor(mouse_state);
     }
 
+    fn move_prompt_cursor_to(&self, point: Point, side: Side) {
+        let Some(delta) = prompt_cursor_delta(self.ctx.terminal(), point, side) else {
+            return;
+        };
+        let Ok(repeat) = u16::try_from(delta.unsigned_abs()) else {
+            return;
+        };
+        if repeat == 0 {
+            return;
+        }
+
+        let key = if delta < 0 { RuntimeKey::Left } else { RuntimeKey::Right };
+        let bytes = crate::input::terminal_input::build_runtime_sequence(
+            key,
+            RuntimeKeyModifiers::default(),
+            repeat,
+            *self.ctx.terminal().mode(),
+        );
+        self.ctx.write_to_pty(bytes);
+    }
+
     pub fn mouse_input(&mut self, state: ElementState, button: MouseButton) {
         match button {
             MouseButton::Left => self.ctx.mouse_mut().left_button_state = state,
@@ -1422,6 +1445,26 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
                     mouse.pending_selection = None;
                 },
                 ElementState::Released => {
+                    let click_target = self
+                        .ctx
+                        .mouse()
+                        .pending_selection
+                        .as_ref()
+                        .and_then(|(ty, point, side)| {
+                            matches!(ty, &SelectionType::Simple).then_some((*point, *side))
+                        });
+                    if let Some((point, side)) = click_target
+                        && self.ctx.modifiers().state().is_empty()
+                        && !self.ctx.search_active()
+                        && !self.ctx.terminal().mode().contains(TermMode::VI)
+                        && self
+                            .ctx
+                            .size_info()
+                            .contains_point(self.ctx.mouse().x, self.ctx.mouse().y)
+                    {
+                        self.move_prompt_cursor_to(point, side);
+                    }
+
                     let (debug_id, x, y, drag_origin, drag_active, pending, selection_updates) = {
                         let mouse = self.ctx.mouse();
                         (
@@ -1637,4 +1680,113 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
 fn rect_contains((rx, ry, rw, rh): (f32, f32, f32, f32), x: f32, y: f32) -> bool {
     x >= rx && x < rx + rw && y >= ry && y < ry + rh
+}
+
+fn prompt_cursor_delta<T: EventListener>(
+    terminal: &Term<T>,
+    target: Point,
+    side: Side,
+) -> Option<i32> {
+    let start = terminal.nebula_prompt_input_point()?;
+    let grid = terminal.grid();
+    let columns = grid.columns();
+    if columns == 0 || start.column.0 >= columns {
+        return None;
+    }
+
+    let last_column = Column(columns - 1);
+    let mut last_line = start.line;
+    while last_line < grid.bottommost_line()
+        && grid[last_line][last_column].flags.contains(Flags::WRAPLINE)
+    {
+        last_line = Line(last_line.0 + 1);
+    }
+
+    let cursor = grid.cursor.point;
+    let in_input = |point: Point| {
+        point.line >= start.line
+            && point.line <= last_line
+            && (point.line != start.line || point.column >= start.column)
+    };
+    if !in_input(cursor) || !in_input(target) {
+        return None;
+    }
+
+    let input_index = |point: Point, side: Side, pending_wrap: bool| {
+        let mut index = 0usize;
+        for line_number in start.line.0..=point.line.0 {
+            let line = Line(line_number);
+            let from = if line == start.line { start.column.0 } else { 0 };
+            let to = if line == point.line {
+                if pending_wrap { columns } else { point.column.0.min(columns) }
+            } else {
+                columns
+            };
+
+            for column in from..to {
+                let flags = grid[line][Column(column)].flags;
+                if !flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+                    index += 1;
+                }
+            }
+
+            if line == point.line
+                && !pending_wrap
+                && matches!(side, Side::Right)
+                && point.column.0 < columns
+                && !grid[line][point.column]
+                    .flags
+                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
+                index += 1;
+            }
+        }
+        index
+    };
+
+    let current = input_index(cursor, Side::Left, grid.cursor.input_needs_wrap);
+    let target = input_index(target, side, false);
+    i32::try_from(target).ok()?.checked_sub(i32::try_from(current).ok()?)
+}
+
+#[cfg(test)]
+mod prompt_cursor_tests {
+    use super::*;
+
+    use nebula_terminal::event::VoidListener;
+    use nebula_terminal::event_loop::StreamProcessor;
+    use nebula_terminal::grid::Grid;
+    use nebula_terminal::term::cell::Cell;
+
+    #[test]
+    fn click_delta_tracks_the_active_shell_input() {
+        let size = Grid::<Cell>::new(3, 20, 0);
+        let mut terminal = Term::new(Default::default(), &size, VoidListener);
+        let mut stream = StreamProcessor::default();
+
+        stream.feed(
+            &mut terminal,
+            &VoidListener,
+            b"\x1b]133;A\x07PS> \x1b]133;B\x07abcdef\x1b[2D",
+        );
+
+        assert_eq!(terminal.nebula_prompt_input_point(), Some(Point::new(Line(0), Column(4))));
+        assert_eq!(terminal.grid().cursor.point, Point::new(Line(0), Column(8)));
+        assert_eq!(
+            prompt_cursor_delta(&terminal, Point::new(Line(0), Column(5)), Side::Left),
+            Some(-3)
+        );
+        assert_eq!(
+            prompt_cursor_delta(&terminal, Point::new(Line(0), Column(5)), Side::Right),
+            Some(-2)
+        );
+        assert_eq!(
+            prompt_cursor_delta(&terminal, Point::new(Line(0), Column(9)), Side::Left),
+            Some(1)
+        );
+        assert_eq!(
+            prompt_cursor_delta(&terminal, Point::new(Line(0), Column(2)), Side::Left),
+            None
+        );
+    }
 }
