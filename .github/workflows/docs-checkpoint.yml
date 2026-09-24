@@ -20,6 +20,7 @@ jobs:
           ref: docs/complete-user-guide-20260924
           path: project
           fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_PR_PAT || github.token }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -40,7 +41,7 @@ jobs:
               assert path.is_relative_to(root)
               assert name == '.gitignore' or name.startswith(('docs/site/', 'architecture/notes/docs/site/')) or name == '.github/workflows/docs-site.yml'
               path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_text(content, encoding='utf-8')
+              path.write_text(content.rstrip() + '\n', encoding='utf-8')
           pathlib.Path('checkpoint.json').write_text(json.dumps(data), encoding='utf-8')
           print(f'Applied {len(data["files"])} source files')
           PY
@@ -51,7 +52,7 @@ jobs:
           python -m unittest discover -s docs/site -p test_site.py -v
           python docs/site/build.py
           python -m playwright install --with-deps chromium
-          python docs/site/check_browser.py
+          python docs/site/check_browser.py --output docs/site/browser-artifacts
       - name: Commit checkpoint without rewriting history
         run: |
           python - <<'PY'
@@ -62,7 +63,7 @@ jobs:
           git('config', 'user.name', 'WilliamWang1721')
           git('config', 'user.email', '140129782+WilliamWang1721@users.noreply.github.com')
           git('add', '--', *data['files'])
-          git('diff', '--cached', '--check')
+          subprocess.run(['git', '-C', 'project', 'diff', '--cached', '--check'], check=True)
           git('commit', '-m', data['message'])
           git('push', 'origin', 'HEAD:docs/complete-user-guide-20260924')
           print('CHECKPOINT_SHA=' + git('rev-parse', 'HEAD').strip())
@@ -74,4 +75,5 @@ jobs:
           path: |
             project/docs/site/dist/
             project/docs/site/browser-artifacts/
+          include-hidden-files: true
           retention-days: 14
