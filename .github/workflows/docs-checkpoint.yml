@@ -1,0 +1,77 @@
+name: Docs checkpoint delivery
+on:
+  push:
+    branches: [automation/docs-source-20260924]
+    paths: [automation/docs-payload/**, .github/workflows/docs-checkpoint.yml]
+permissions:
+  contents: write
+concurrency:
+  group: docs-checkpoint-delivery
+  cancel-in-progress: false
+jobs:
+  deliver:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: delivery
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/complete-user-guide-20260924
+          path: project
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify and apply authored checkpoint
+        run: |
+          python - <<'PY'
+          import base64, gzip, hashlib, json, pathlib, subprocess
+          parts = pathlib.Path('delivery/automation/docs-payload')
+          encoded = ''.join(p.read_text().strip() for p in sorted(parts.glob('*.txt')))
+          expected = '321b61ad8f043a5a11a6d1a10bad7774375e8db923444204cc5f77e39d25248e'
+          assert hashlib.sha256(encoded.encode()).hexdigest() == expected, 'Checkpoint checksum mismatch'
+          data = json.loads(gzip.decompress(base64.b64decode(encoded, validate=True)))
+          root = pathlib.Path('project').resolve()
+          head = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+          assert head == data['expected_parent'], 'Feature branch changed; reconcile before retry'
+          for name, content in data['files'].items():
+              path = (root / name).resolve()
+              assert path.is_relative_to(root)
+              assert name == '.gitignore' or name.startswith(('docs/site/', 'architecture/notes/docs/site/')) or name == '.github/workflows/docs-site.yml'
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content, encoding='utf-8')
+          pathlib.Path('checkpoint.json').write_text(json.dumps(data), encoding='utf-8')
+          print(f'Applied {len(data["files"])} source files')
+          PY
+      - name: Build and validate
+        working-directory: project
+        run: |
+          python -m pip install -r docs/site/requirements.txt playwright==1.57.0
+          python -m unittest discover -s docs/site -p test_site.py -v
+          python docs/site/build.py
+          python -m playwright install --with-deps chromium
+          python docs/site/check_browser.py
+      - name: Commit checkpoint without rewriting history
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          data = json.load(open('checkpoint.json'))
+          def git(*args):
+              return subprocess.check_output(['git', '-C', 'project', *args], text=True)
+          git('config', 'user.name', 'WilliamWang1721')
+          git('config', 'user.email', '140129782+WilliamWang1721@users.noreply.github.com')
+          git('add', '--', *data['files'])
+          git('diff', '--cached', '--check')
+          git('commit', '-m', data['message'])
+          git('push', 'origin', 'HEAD:docs/complete-user-guide-20260924')
+          print('CHECKPOINT_SHA=' + git('rev-parse', 'HEAD').strip())
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docs-checkpoint-evidence
+          path: |
+            project/docs/site/dist/
+            project/docs/site/browser-artifacts/
+          retention-days: 14
