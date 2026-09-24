@@ -1,0 +1,28 @@
+name: Docs source snapshot
+on:
+  push:
+    branches: [automation/docs-source-20260924]
+    paths: [.github/workflows/docs-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download complete upstream main snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot
+          sha=$(gh api repos/Kuddev/pebrel/commits/main --jq .sha)
+          gh api "repos/Kuddev/pebrel/zipball/$sha" > snapshot/pebrel-source.zip
+          printf '%s\n' "$sha" > snapshot/UPSTREAM_SHA
+          sha256sum snapshot/pebrel-source.zip > snapshot/SHA256SUMS
+          unzip -t snapshot/pebrel-source.zip | tail -n 1
+          echo "Upstream: Kuddev/pebrel@$sha" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-docs-full-source
+          path: snapshot/
+          retention-days: 14
