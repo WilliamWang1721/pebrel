@@ -75,9 +75,9 @@ def design(text):
 edit('settings_pane/design.rs', design)
 
 def toolbar(text, ids, sidebar=False):
-    text, count = re.subn(r'(?m)^use super::\*;$', 'use super::*;\nuse crate::gpui_shell::widgets::toolbar_button;', text)
+    text, count = re.subn(r'(?m)^use ', 'use crate::gpui_shell::widgets::toolbar_button;\nuse ', text, count=1)
     if count != 1:
-        raise RuntimeError(f'Expected one module import, found {count}')
+        raise RuntimeError(f'Expected a module import, found {count}')
     for button_id in ids:
         pattern = rf'Button::new\("{re.escape(button_id)}"\)\s*\.icon\((.*?)\)\s*\.ghost\(\)'
         text, count = re.subn(pattern, lambda match: f'toolbar_button("{button_id}", {match.group(1).strip()})', text, flags=re.S)
