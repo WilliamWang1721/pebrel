@@ -1,0 +1,47 @@
+name: Open upstream documentation draft
+on:
+  push:
+    branches: [automation/docs-source-20260924]
+    paths: [.github/workflows/docs-open-pr.yml]
+permissions:
+  contents: read
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or locate the requested upstream draft
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_PR_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo 'The authorized upstream PR credential is unavailable.'; exit 1; }
+          existing=$(gh api 'repos/Kuddev/pebrel/pulls?state=open&head=WilliamWang1721:docs/complete-user-guide-20260924&base=main' --jq '.[0].html_url // empty')
+          if [ -n "$existing" ]; then echo "$existing" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          python - <<'PY'
+          import json
+          body = '''## Summary
+          Add a polished, fully static Chinese user documentation site, based on upstream main 9dc058d (1.9.1).
+
+          ## First checkpoint — draft
+          The first commit saves the implemented website and three introductory guides before the complete feature documentation pass.
+
+          - Responsive desktop/mobile layout, light/dark themes, local full-text search, keyboard navigation and animated interactions.
+          - Rich Markdown, highlighted code, copy controls, table of contents, image zoom, reduced-motion and print support.
+          - Relative-URL static output and a GitHub Pages workflow; no runtime backend or external font dependency.
+          - No application runtime code or architecture gate changes.
+
+          ## Validation
+          Three site tests and real Chromium checks passed in GitHub Actions, including search/navigation under a repository prefix, clipboard, theme persistence, mobile navigation, reduced motion and no-JavaScript reading.
+
+          ## Delivery
+          - [x] Full upstream ZIP acquired through Actions and extracted in the working sandbox.
+          - [x] Website implementation saved as the first checkpoint.
+          - [ ] Complete the user-facing feature guides against the pinned code.
+          - [ ] Attempt native application screenshots through Actions and integrate valid captures.
+          - [ ] Validate and save the second content commit.
+
+          Native app captures are not included yet. Pages deployment requires maintainer enablement. This PR intentionally remains draft during documentation completion.
+          '''
+          json.dump(dict(title='docs: add complete static user documentation', head='WilliamWang1721:docs/complete-user-guide-20260924', base='main', draft=True, maintainer_can_modify=True, body=body),open('pr.json','w'))
+          PY
+          gh api repos/Kuddev/pebrel/pulls --input pr.json --jq '{number, html_url, draft, base: .base.ref, head: .head.label}' | tee -a "$GITHUB_STEP_SUMMARY"
