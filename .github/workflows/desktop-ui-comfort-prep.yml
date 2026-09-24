@@ -1,20 +1,64 @@
-name: Submit desktop UI comfort PR
+name: Validate desktop UI comfort on macOS
 on:
   push:
     branches: [automation/desktop-ui-comfort-20260924]
-    paths:
-      - .github/workflows/desktop-ui-comfort-prep.yml
-      - tmp/desktop-ui-comfort-pr.md
+    paths: [.github/workflows/desktop-ui-comfort-prep.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  submit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
     steps:
-      - uses: actions/checkout@v6
-      - name: Create the upstream PR using the existing PR-control authorization
-        env:
-          GH_TOKEN: ${{ secrets.UPSTREAM_PR_PAT }}
+      - uses: actions/checkout@v4
+        with:
+          ref: 0aaaeb3b06b417ee3aab7e56b68dd6f5d232f2dc
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Keep toolbar call and imports readable
         run: |
-          gh pr create --repo Kuddev/pebrel --base main --head WilliamWang1721:fix/desktop-ui-control-spacing --draft --title 'fix(ui): improve desktop control sizing and spacing' --body-file tmp/desktop-ui-comfort-pr.md
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('nebula_app/src/gpui_shell/workspace/top_tabs.rs')
+          text = p.read_text()
+          text = text.replace('use crate::gpui_shell::widgets::toolbar_button;\nuse std::time::Duration;', 'use std::time::Duration;')
+          text = text.replace('use crate::gpui_shell::terminal::view::SidebarActivity;', 'use crate::gpui_shell::terminal::view::SidebarActivity;\nuse crate::gpui_shell::widgets::toolbar_button;')
+          old = '''                        toolbar_button("top-toggle-command-manager", Icon::new(Icon::empty()).path(
+                                      crate::gpui_shell::assets::nav::COMMAND_MANAGER,
+                                  ),)'''
+          start = text.index('                        toolbar_button("top-toggle-command-manager"')
+          end = text.index('                            .selected(self.command_manager_open)', start)
+          text = text[:start] + '''                        toolbar_button(
+                                      "top-toggle-command-manager",
+                                      Icon::new(Icon::empty())
+                                          .path(crate::gpui_shell::assets::nav::COMMAND_MANAGER),
+                                  )
+          '''.replace('                                      ', '                            ').replace('                                  ', '                        ').rstrip() + '\n' + text[end:]
+          p.write_text(text)
+          PY
+          cargo fmt --all
+          cargo fmt --all -- --check
+          git diff --check
+          python3 scripts/check_architecture.py --base 9dc058d12765893553d5fc7a2c37c870c96168b0
+          git add nebula_app/src/gpui_shell/workspace/top_tabs.rs
+          git diff --exit-code
+          git config user.name WilliamWang1721
+          git config user.email 140129782+WilliamWang1721@users.noreply.github.com
+          git commit -m 'style(ui): keep toolbar composition readable'
+          git push origin HEAD:refs/heads/fix/desktop-ui-control-spacing
+      - uses: ./.github/actions/rust-cache
+        id: cache
+        with:
+          key: native
+          target: target/ci
+          legacy-key: macos
+      - name: Execute shared-control geometry and hit-area regression
+        run: cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --features gpui-test-support desktop_controls_keep_padding_clickable_with_small_ui_fonts -- --nocapture
+      - name: Check the production GPUI feature graph
+        run: cargo check --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-shell
