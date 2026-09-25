@@ -73,7 +73,9 @@ impl SettingsPane {
             Ok(value) => {
                 self.update_release_input
                     .update(cx, |input, cx| input.set_value(value.clone(), window, cx));
-                self.persist(&[("update_release_url", value)], cx);
+                if value != self.runtime.update_release_url {
+                    self.persist(&[("update_release_url", value)], cx);
+                }
                 self.about_update = AboutUpdateState::Idle;
                 self.about_last_checked = None;
             },
