@@ -45,7 +45,10 @@
       "ai_messages": "AI 消息弹窗",
       "ai_messages_description": "显示右下角的 AI 弹窗，不影响系统通知。",
       "ai_messages_details": "关闭后收起已有的应用内 AI 弹窗，并停止显示新的完成和确认弹窗。Windows 系统通知及标签状态提示仍保留，终端输出和终端内的确认请求不受影响。",
-      "save_failed": "无法保存通知设置：{error}"
+      "save_failed": "无法保存通知设置：{error}",
+      "system": "系统通知",
+      "system_description": "同时将通知发送到系统通知中心。",
+      "system_details": "关闭后仅保留应用内通知。Windows 开启时，即使 Pebrel 位于前台也会将同一通知镜像到系统通知中心；系统的勿扰模式和通知权限仍然生效。"
     },
     "network": {
       "title": "网络代理",

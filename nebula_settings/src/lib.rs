@@ -1019,6 +1019,8 @@ pub struct RuntimeSettings {
     /// AI message toasts inside the application. System notifications and
     /// terminal/tab state are independent. Default on for existing users.
     pub ai_toasts: bool,
+    /// Native OS notifications. Default on to preserve existing background delivery.
+    pub system_notifications: bool,
     /// Display lifetime for in-app cards; default mode retains each kind's lifetime.
     pub notification_duration: NotificationDuration,
     /// 新会话欢迎屏 fastfetch（默认关：启动速度优先于观感，旧壳裁定）。
@@ -1199,6 +1201,7 @@ impl RuntimeSettings {
                 .unwrap_or_default(),
             bell: raw.value("bell").and_then(BellModeName::from_settings).unwrap_or_default(),
             ai_toasts: raw.bool_on("ai_toasts").unwrap_or(true),
+            system_notifications: raw.bool_on("system_notifications").unwrap_or(true),
             notification_duration: raw
                 .value("notification_duration")
                 .and_then(NotificationDuration::from_settings)

@@ -42,6 +42,7 @@ const RESET_KEYS: &[&str] = &[
     "vcs_display",
     "bell",
     "ai_toasts",
+    "system_notifications",
     "notification_duration",
     "fetch",
     "auto_check_updates",
@@ -166,6 +167,14 @@ mod tests {
         let restored = default_settings_text(original);
         assert_eq!(restored, "custom_data=keep\n");
         assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&restored)).ai_toasts);
+    }
+
+    #[test]
+    fn resetting_preferences_reenables_system_notifications() {
+        let restored = default_settings_text("system_notifications=0\ncustom_data=keep\n");
+        let runtime = RuntimeSettings::from_raw(&RawSettings::from_text(&restored));
+        assert!(runtime.system_notifications);
+        assert_eq!(restored, "custom_data=keep\n");
     }
 
     #[test]

@@ -45,7 +45,10 @@
       "ai_messages": "AI message toasts",
       "ai_messages_description": "Show AI toasts in the lower-right corner. System notifications are unaffected.",
       "ai_messages_details": "Turning this off dismisses existing in-app AI toasts and hides new completion and confirmation toasts. System notifications, including Windows notifications, and tab status indicators are unchanged. Terminal output and confirmation requests in the terminal remain available.",
-      "save_failed": "Could not save the notification setting: {error}"
+      "save_failed": "Could not save the notification setting: {error}",
+      "system": "System notifications",
+      "system_description": "Also send notifications to the operating system notification center.",
+      "system_details": "When disabled, only in-app notifications remain. On Windows, enabling this also mirrors the same notification to the system notification center while Pebrel is in the foreground. OS notification permissions and Do Not Disturb still apply."
     },
     "network": {
       "title": "Network proxy",
