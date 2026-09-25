@@ -35,6 +35,6 @@ jobs:
             'nebula_app/src/gpui_shell/settings_pane/navigation.rs',
             'nebula_app/src/gpui_shell/settings_pane/tests.rs'
           )
-          rustfmt --edition 2024 --config skip_children=true --check $files
+          rustfmt --edition 2024 --config skip_children=true,newline_style=Native --check $files
       - name: Settings
         run: cargo test --locked -p nebula-settings system_notifications
