@@ -1,0 +1,49 @@
+name: Windows system notifications validation
+
+on:
+  push:
+    branches: ["chatgpt/windows-system-notifications-ci"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-system-notifications-validation
+  cancel-in-progress: true
+
+jobs:
+  architecture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python3 scripts/check_architecture.py --base 9dc058d12765893553d5fc7a2c37c870c96168b0
+      - run: python3 -m unittest scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance scripts.tests.test_prohibited_names
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Settings tests
+        run: cargo test --locked -p nebula-settings system_notifications -- --nocapture
+      - name: Notification route regression
+        run: cargo test --locked -p nebula --bin pebrel --features gpui-test-support system_notification_switch_only_controls_the_native_channel -- --test-threads=1
+      - name: Check Windows GPUI application
+        run: cargo check --locked -p nebula --bin pebrel --features gpui-shell
+      - name: i18n contract
+        run: cargo test --locked --manifest-path tools/i18n-contract/Cargo.toml
