@@ -1,4 +1,5 @@
 name: Deliver documentation revision
+# trigger: submit requested revision
 
 on:
   push:
