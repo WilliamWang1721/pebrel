@@ -366,9 +366,10 @@ fn parse_latest_release(bytes: &[u8]) -> Result<LatestRelease, String> {
 }
 
 pub(super) fn release_version_from_tag(tag: &str) -> Option<String> {
-    let version = tag.trim().strip_prefix(['v', 'V']).unwrap_or(tag.trim());
+    let tag = tag.trim();
+    let version = tag.strip_prefix('v').or_else(|| tag.strip_prefix('V')).unwrap_or(tag);
     (!version.is_empty()
-        && version.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        && version.as_bytes().first().is_some_and(|byte| byte.is_ascii_digit())
         && version
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+')))
