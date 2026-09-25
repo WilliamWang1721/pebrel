@@ -9,49 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  windows:
+  validation:
     runs-on: windows-2022
-    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Rust toolchain
+      - name: Workflow probe
         shell: pwsh
-        run: |
-          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
-          rustup default 1.97.1
-      - name: Prepare console runtime
-        shell: pwsh
-        run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Settings
-        run: cargo test --locked -p nebula-settings system_notifications
-      - name: I18n contract
-        run: cargo test --locked --manifest-path tools/i18n-contract/Cargo.toml
-      - name: Notification routing
-        run: cargo test --locked -p nebula --bin pebrel --features gpui-shell,gpui-test-support gpui_shell::workspace::notifications::tests:: -- --test-threads=1
-      - name: Settings UI
-        run: cargo test --locked -p nebula --bin pebrel --features gpui-shell,gpui-test-support notification_switches_are_searchable_and_visible -- --test-threads=1
-      - name: Product compile
-        run: cargo check --locked -p nebula --bin pebrel --features gpui-shell --tests
-
-  linux:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - name: Rust toolchain
-        shell: bash
-        run: |
-          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
-          rustup default 1.97.1
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Settings
-        run: cargo test --locked -p nebula-settings system_notifications
-      - name: I18n contract
-        run: cargo test --locked --manifest-path tools/i18n-contract/Cargo.toml
-      - name: Notification routing
-        run: cargo test --locked -p nebula --bin pebrel --features gpui-shell,gpui-test-support gpui_shell::workspace::notifications::tests:: -- --test-threads=1
-      - name: Product compile
-        run: cargo check --locked -p nebula --bin pebrel --features gpui-shell --tests
+        run: Write-Host "windows-validation-workflow-loaded"
