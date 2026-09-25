@@ -25,19 +25,26 @@ impl ReleaseSource {
         if path.contains('?') || path.contains('#') {
             return Err("自定义更新地址不能包含查询参数或片段".into());
         }
-        let parts: Vec<_> = path.split('/').collect();
-        let (owner, repo, tag) = match parts.as_slice() {
-            [owner, repo, "releases"] | [owner, repo, "releases", "latest"] => {
-                (*owner, *repo, None)
-            },
-            [owner, repo, "releases", "tag", tag] => (*owner, *repo, Some((*tag).to_owned())),
-            _ => return Err("请填写 GitHub Releases 或 releases/tag/<tag> 地址".into()),
+        let (repo_path, tag) = if let Some(repo) = path.strip_suffix("/releases/latest") {
+            (repo, None)
+        } else if let Some(repo) = path.strip_suffix("/releases") {
+            (repo, None)
+        } else if let Some((repo, tag)) = path.split_once("/releases/tag/") {
+            (repo, Some(tag))
+        } else {
+            return Err("请填写 GitHub Releases 或 releases/tag/<tag> 地址".into());
         };
-        if !component(owner) || !component(repo) || tag.as_deref().is_some_and(|tag| !tag_name(tag))
+        let Some((owner, repo)) = repo_path.split_once('/') else {
+            return Err("GitHub Release 地址无效".into());
+        };
+        if repo.contains('/')
+            || !component(owner)
+            || !component(repo)
+            || tag.is_some_and(|tag| !tag_name(tag))
         {
             return Err("GitHub Release 地址无效".into());
         }
-        Ok(Self { repo: format!("{owner}/{repo}"), tag })
+        Ok(Self { repo: format!("{owner}/{repo}"), tag: tag.map(str::to_owned) })
     }
 
     pub(super) fn is_default(&self) -> bool {
@@ -77,13 +84,17 @@ impl ReleaseSource {
 }
 
 fn component(value: &str) -> bool {
-    !value.is_empty()
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    !matches!(value, "" | "." | "..")
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')
+        })
 }
 
 fn tag_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+'))
+    !matches!(value, "" | "." | "..")
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+')
+        })
 }
 
 pub(super) fn configured() -> Result<ReleaseSource, String> {
