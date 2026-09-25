@@ -17,7 +17,6 @@ use crate::event::{Event, EventType};
 #[cfg(feature = "legacy-shell")]
 use crate::message_bar::{Message, MessageType};
 
-const RELEASES_API: &str = "https://api.github.com/repos/Kuddev/pebrel/releases/latest";
 pub const RELEASES_PAGE: &str = "https://github.com/Kuddev/pebrel/releases";
 const UPDATE_STATE_FILE: &str = "update_state.json";
 const REMIND_LATER_SECS: u64 = 3 * 24 * 60 * 60;
