@@ -33,6 +33,9 @@
       "agents": "Agents"
     },
     "notifications": {
+      "system": "系统通知",
+      "system_description": "通过操作系统通知中心发送终端与 AI 提醒。",
+      "system_details": "在 Windows 上，开启后 Pebrel 位于前台时也会同步发送系统通知。关闭只停止系统通知，不影响应用内通知卡片和标签状态。",
       "duration": "通知显示时长",
       "duration_description": "选择应用内通知自动关闭的时间，或保持常驻。",
       "duration_details": "对新显示或刷新的应用内卡片生效。默认保留原有时长：短提示 5 秒，消息提醒 90 秒，更新通知常驻。包括常驻模式在内，仅保留最新三条卡片。关闭或替换卡片不会同意或拒绝确认，也不会改变任务状态；系统通知不受影响。",

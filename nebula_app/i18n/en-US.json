@@ -33,6 +33,9 @@
       "agents": "Agents"
     },
     "notifications": {
+      "system": "System notifications",
+      "system_description": "Send terminal and AI alerts through the operating system notification center.",
+      "system_details": "On Windows, enabled alerts are also sent while Pebrel is in the foreground. Turning this off only disables system delivery; in-app notification cards and tab status remain unchanged.",
       "duration": "Notification duration",
       "duration_description": "Choose when in-app notifications close, or keep them until dismissed.",
       "duration_details": "Applies to new or refreshed in-app cards. Defaults: short toasts 5 seconds, banners 90 seconds, update notices until dismissed. Only the latest three cards are kept, including in persistent mode. Closing or replacing a card never answers a confirmation or changes task state. System notifications are unchanged.",

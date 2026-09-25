@@ -91,6 +91,10 @@ pub(super) fn help(key: &str, language: UiLanguage) -> SettingHelp {
             language.text(crate::i18n::Message::SettingsNotificationsAiMessagesDescription),
             Some(language.text(crate::i18n::Message::SettingsNotificationsAiMessagesDetails)),
         ),
+        "system_notifications" => (
+            language.text(crate::i18n::Message::SettingsNotificationsSystemDescription),
+            Some(language.text(crate::i18n::Message::SettingsNotificationsSystemDetails)),
+        ),
         "notification_duration" => (
             language.text(crate::i18n::Message::SettingsNotificationsDurationDescription),
             Some(language.text(crate::i18n::Message::SettingsNotificationsDurationDetails)),
@@ -192,6 +196,7 @@ mod tests {
             "startup_directory",
             "bell",
             "ai_toasts",
+            "system_notifications",
             "notification_duration",
             "font_family",
             "ghost",
