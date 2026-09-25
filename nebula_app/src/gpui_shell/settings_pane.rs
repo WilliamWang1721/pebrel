@@ -380,7 +380,10 @@ impl SettingsPane {
             cx.notify();
             return;
         }
-        if matches!(key, "ai_toasts" | "focus_follows_mouse" | "dim_inactive_panes") {
+        if matches!(
+            key,
+            "ai_toasts" | "system_notifications" | "focus_follows_mouse" | "dim_inactive_panes"
+        ) {
             if let Err(error) = self.try_persist(&[(key, (value as u8).to_string())], cx) {
                 let language = crate::gpui_shell::config::ui_language(cx);
                 super::toast::toast(
@@ -388,7 +391,7 @@ impl SettingsPane {
                     cx,
                     super::toast::ToastKind::Warning,
                     language.format(
-                        if key == "ai_toasts" {
+                        if matches!(key, "ai_toasts" | "system_notifications") {
                             crate::i18n::Message::SettingsNotificationsSaveFailed
                         } else {
                             crate::i18n::Message::SettingsSaveFailed
@@ -745,6 +748,7 @@ impl SettingsPane {
             "powerline" => flag!(powerline),
             "ghost" => flag!(ghost),
             "ai_toasts" => flag!(ai_toasts),
+            "system_notifications" => flag!(system_notifications),
             "notification_duration" => pick!(notification_duration),
             "cjk_bold_regular" => flag!(cjk_bold_regular),
             "fetch" => flag!(fetch),
@@ -1088,12 +1092,22 @@ impl SettingsPane {
 
     fn section_profiles(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
         let language = crate::gpui_shell::config::ui_language(cx);
+        let capabilities = crate::platform::CAPABILITIES;
         let terminal = self
             .group(language.pick("启动", "Startup"), cx)
             .child(self.shell_select_row(cx))
             .child(self.startup_directory_row(cx));
         let alerts = self
             .group(language.pick("提醒", "Alerts"), cx)
+            .when(capabilities.foreground_system_notifications, |group| {
+                group.child(self.switch_row(
+                    "system_notifications",
+                    language.text(crate::i18n::Message::SettingsNotificationsSystem),
+                    help("system_notifications", language),
+                    self.runtime.system_notifications,
+                    cx,
+                ))
+            })
             .child(self.switch_row(
                 "ai_toasts",
                 language.text(crate::i18n::Message::SettingsNotificationsAiMessages),
