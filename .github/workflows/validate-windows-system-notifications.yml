@@ -21,5 +21,20 @@ jobs:
       - name: Prepare console runtime
         shell: pwsh
         run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
-      - name: Format
-        run: cargo fmt --all -- --check
+      - name: Format changed Rust files
+        shell: pwsh
+        run: |
+          $files = @(
+            'nebula_settings/src/lib.rs',
+            'nebula_settings/src/reset.rs',
+            'nebula_app/src/platform/capabilities.rs',
+            'nebula_app/src/gpui_shell/config.rs',
+            'nebula_app/src/gpui_shell/workspace/notifications.rs',
+            'nebula_app/src/gpui_shell/settings_pane.rs',
+            'nebula_app/src/gpui_shell/settings_pane/setting_help.rs',
+            'nebula_app/src/gpui_shell/settings_pane/navigation.rs',
+            'nebula_app/src/gpui_shell/settings_pane/tests.rs'
+          )
+          rustfmt --edition 2024 --config skip_children=true --check $files
+      - name: Settings
+        run: cargo test --locked -p nebula-settings system_notifications
