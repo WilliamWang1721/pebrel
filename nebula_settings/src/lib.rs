@@ -1019,6 +1019,8 @@ pub struct RuntimeSettings {
     /// AI message toasts inside the application. System notifications and
     /// terminal/tab state are independent. Default on for existing users.
     pub ai_toasts: bool,
+    /// Native operating-system notifications. In-app cards remain independent.
+    pub system_notifications: bool,
     /// Display lifetime for in-app cards; default mode retains each kind's lifetime.
     pub notification_duration: NotificationDuration,
     /// 新会话欢迎屏 fastfetch（默认关：启动速度优先于观感，旧壳裁定）。
@@ -1199,6 +1201,7 @@ impl RuntimeSettings {
                 .unwrap_or_default(),
             bell: raw.value("bell").and_then(BellModeName::from_settings).unwrap_or_default(),
             ai_toasts: raw.bool_on("ai_toasts").unwrap_or(true),
+            system_notifications: raw.bool_on("system_notifications").unwrap_or(true),
             notification_duration: raw
                 .value("notification_duration")
                 .and_then(NotificationDuration::from_settings)
@@ -1601,6 +1604,20 @@ mod tests {
         let enabled = apply_updates(&disabled, &[("ai_toasts", "1".to_owned())]);
         assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&enabled)).ai_toasts);
         assert_eq!(enabled.matches("ai_toasts=").count(), 1);
+    }
+
+    #[test]
+    fn system_notifications_default_on_and_round_trip_without_replacing_other_settings() {
+        assert!(RuntimeSettings::from_raw(&RawSettings::default()).system_notifications);
+        let original = "# preferences\nshell=zsh\ncustom_key=keep\nsystem_notifications=1\n";
+        let disabled = apply_updates(original, &[("system_notifications", "0".to_owned())]);
+        let restored = RuntimeSettings::from_raw(&RawSettings::from_text(&disabled));
+        assert!(!restored.system_notifications);
+        assert_eq!(restored.shell.as_deref(), Some("zsh"));
+        assert!(disabled.contains("custom_key=keep\n"));
+        let enabled = apply_updates(&disabled, &[("system_notifications", "1".to_owned())]);
+        assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&enabled)).system_notifications);
+        assert_eq!(enabled.matches("system_notifications=").count(), 1);
     }
 
     #[test]

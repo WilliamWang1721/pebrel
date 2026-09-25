@@ -87,11 +87,12 @@ fn settings_search_replaces_keymap_search_and_keeps_section_queries(cx: &mut gpu
 
 #[cfg(feature = "gpui-test-support")]
 #[gpui::test]
-fn ai_toast_setting_is_searchable_and_has_a_visible_switch(cx: &mut gpui::TestAppContext) {
+fn notification_switches_are_searchable_and_visible(cx: &mut gpui::TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
         let mut settings = crate::gpui_shell::config::Settings::load(ThemeName::Nord);
         settings.ai_toasts = true;
+        settings.system_notifications = true;
         cx.set_global(settings);
     });
     let mut pane = None;
@@ -105,24 +106,30 @@ fn ai_toast_setting_is_searchable_and_has_a_visible_switch(cx: &mut gpui::TestAp
     });
     let pane = pane.unwrap();
     cx.simulate_resize(gpui::size(px(1280.0), px(1600.0)));
-    cx.update(|window, cx| {
-        pane.update(cx, |pane, cx| {
-            pane.settings_search_input
-                .update(cx, |input, cx| input.replace_all("AI 消息弹窗", window, cx));
+    for (query, id, key) in [
+        ("AI 消息弹窗", "nebula-switch-ai_toasts", "ai_toasts"),
+        ("系统通知", "nebula-switch-system_notifications", "system_notifications"),
+    ] {
+        cx.update(|window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.settings_search_input.update(cx, |input, cx| {
+                    input.replace_all(query, window, cx);
+                });
+            });
         });
-    });
-    cx.run_until_parked();
-    cx.update(|window, cx| {
-        let _ = window.draw(cx);
-    });
-    assert_eq!(pane.read_with(cx, |pane, _| pane.active_section), 2);
-    let bounds = cx.debug_bounds("nebula-switch-ai_toasts").expect("AI toast switch is rendered");
-    assert!(bounds.size.width > px(0.0) && bounds.size.height > px(0.0));
-    assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(1600.0));
-    assert_eq!(
-        pane.read_with(cx, |pane, _| pane.setting_override("ai_toasts")),
-        Some((false, "1".to_owned()))
-    );
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        assert_eq!(pane.read_with(cx, |pane, _| pane.active_section), 2);
+        let bounds = cx.debug_bounds(id).expect("notification switch is rendered");
+        assert!(bounds.size.width > px(0.0) && bounds.size.height > px(0.0));
+        assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(1600.0));
+        assert_eq!(
+            pane.read_with(cx, |pane, _| pane.setting_override(key)),
+            Some((false, "1".to_owned()))
+        );
+    }
 }
 
 #[test]

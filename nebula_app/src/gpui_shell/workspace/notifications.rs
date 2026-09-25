@@ -20,11 +20,12 @@ fn delivery_channels(
     notification: &Notification,
     visible: bool,
     ai_toasts: bool,
+    system_notifications: bool,
 ) -> DeliveryChannels {
     DeliveryChannels {
         in_app: (!visible || notification.is_attention()) && (ai_toasts || !notification.is_ai()),
-        // Keep native notification routing independent of the in-app preference.
-        system: !visible,
+        system: system_notifications
+            && (!visible || crate::platform::CAPABILITIES.foreground_system_notifications),
     }
 }
 
@@ -101,6 +102,7 @@ impl NebulaWorkspace {
             &notification,
             visible,
             crate::gpui_shell::config::ai_toasts_enabled(cx),
+            crate::gpui_shell::config::system_notifications_enabled(cx),
         );
         let source_view =
             panes.iter().find(|pane| pane.id == pane_id).map(|pane| pane.view.clone());
@@ -181,22 +183,42 @@ mod tests {
             let notification =
                 Notification::AiTurn { program: "codex".into(), message: None, attention };
             assert_eq!(
-                delivery_channels(&notification, false, false),
+                delivery_channels(&notification, false, false, true),
                 DeliveryChannels { in_app: false, system: true }
             );
             assert_eq!(
-                delivery_channels(&notification, false, true),
+                delivery_channels(&notification, false, true, true),
                 DeliveryChannels { in_app: true, system: true }
             );
             assert_eq!(
-                delivery_channels(&notification, true, false),
-                DeliveryChannels { in_app: false, system: false }
+                delivery_channels(&notification, true, false, true),
+                DeliveryChannels {
+                    in_app: false,
+                    system: crate::platform::CAPABILITIES.foreground_system_notifications,
+                }
             );
             assert_eq!(
-                delivery_channels(&notification, true, true),
-                DeliveryChannels { in_app: attention, system: false }
+                delivery_channels(&notification, true, true, true),
+                DeliveryChannels {
+                    in_app: attention,
+                    system: crate::platform::CAPABILITIES.foreground_system_notifications,
+                }
             );
         }
+    }
+
+    #[test]
+    fn disabling_system_notifications_only_disables_the_native_channel() {
+        let notification =
+            Notification::AiTurn { program: "codex".into(), message: None, attention: true };
+        assert_eq!(
+            delivery_channels(&notification, false, true, false),
+            DeliveryChannels { in_app: true, system: false }
+        );
+        assert_eq!(
+            delivery_channels(&notification, true, true, false),
+            DeliveryChannels { in_app: true, system: false }
+        );
     }
 
     #[test]
@@ -210,7 +232,7 @@ mod tests {
             },
         ] {
             assert_eq!(
-                delivery_channels(&notification, false, false),
+                delivery_channels(&notification, false, false, true),
                 DeliveryChannels { in_app: false, system: true }
             );
         }
@@ -224,8 +246,8 @@ mod tests {
         ] {
             for visible in [false, true] {
                 assert_eq!(
-                    delivery_channels(&notification, visible, false),
-                    delivery_channels(&notification, visible, true)
+                    delivery_channels(&notification, visible, false, true),
+                    delivery_channels(&notification, visible, true, true)
                 );
             }
         }
