@@ -1,0 +1,32 @@
+name: Source snapshot
+
+on:
+  push:
+    branches:
+      - chatgpt/source-snapshot-windows-notifications
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout upstream main
+        uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          persist-credentials: false
+
+      - name: Archive source
+        shell: bash
+        run: zip -qr "$RUNNER_TEMP/pebrel-main.zip" . -x ".git/*"
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-main-source
+          path: ${{ runner.temp }}/pebrel-main.zip
+          retention-days: 1
+          compression-level: 0
