@@ -17,13 +17,17 @@ use crate::event::{Event, EventType};
 #[cfg(feature = "legacy-shell")]
 use crate::message_bar::{Message, MessageType};
 
-const RELEASES_API: &str = "https://api.github.com/repos/Kuddev/pebrel/releases/latest";
 pub const RELEASES_PAGE: &str = "https://github.com/Kuddev/pebrel/releases";
 const UPDATE_STATE_FILE: &str = "update_state.json";
 const REMIND_LATER_SECS: u64 = 3 * 24 * 60 * 60;
 
 pub(crate) mod assets;
 mod fallback;
+mod source;
+
+pub(crate) use source::{configured_release_page, normalize_setting, validate_asset_url};
+#[cfg(test)]
+pub(crate) use source::validate_official_asset_url;
 
 #[cfg(feature = "update-test-source")]
 pub(crate) mod test_source;
@@ -92,11 +96,13 @@ pub struct UpdateCheckResult {
     pub latest: String,
     pub update_available: bool,
     pub asset: Option<UpdateAsset>,
+    pub release_page: String,
 }
 
 #[derive(Debug)]
 struct LatestRelease {
     version: String,
+    tag: String,
     asset: Option<UpdateAsset>,
 }
 
@@ -129,7 +135,14 @@ pub fn spawn_once(proxy: EventLoopProxy<Event>) {
     let spawned = std::thread::Builder::new().name("update-check".into()).spawn(move || {
         // 等窗口与首个会话安顿好再查，别和启动抢磁盘/网络。
         std::thread::sleep(Duration::from_secs(12));
-        let release = match fetch_latest_release() {
+        let source = match source::configured() {
+            Ok(source) => source,
+            Err(error) => {
+                log::debug!("update-check: {error}");
+                return;
+            },
+        };
+        let release = match fetch_release(&source) {
             Ok(release) => release,
             Err(error) => {
                 log::debug!("update-check: {error}");
@@ -142,7 +155,8 @@ pub fn spawn_once(proxy: EventLoopProxy<Event>) {
             log::debug!("update-check: v{current} is current (latest v{latest})");
             return;
         }
-        let text = format!("Pebrel v{latest} 已发布（当前 v{current}），下载：{RELEASES_PAGE}");
+        let page = source.release_page();
+        let text = format!("Pebrel v{latest} 已发布（当前 v{current}），下载：{page}");
         let _ = proxy.send_event(Event::new(
             EventType::Message(Message::new(text, MessageType::Warning)),
             None,
@@ -181,6 +195,8 @@ pub fn spawn_gpui_once(sender: std::sync::mpsc::Sender<crate::gpui_shell::GpuiSh
                         latest: asset.version.clone(),
                         update_available: true,
                         asset: Some(asset),
+                        release_page: configured_release_page()
+                            .unwrap_or_else(|_| RELEASES_PAGE.to_owned()),
                     },
                 ));
             }
@@ -215,7 +231,8 @@ pub fn spawn_gpui_once(sender: std::sync::mpsc::Sender<crate::gpui_shell::GpuiSh
 /// 立即检查 GitHub 最新 release；调用方必须把它放到后台执行器，避免
 /// 网络等待阻塞 UI 线程。
 pub fn check_now() -> Result<UpdateCheckResult, String> {
-    let release = fetch_latest_release()?;
+    let source = source::configured()?;
+    let release = fetch_release(&source)?;
     let current = env!("CARGO_PKG_VERSION").to_owned();
     let update_available = can_install_version(&release.version)?;
     Ok(UpdateCheckResult {
@@ -223,6 +240,7 @@ pub fn check_now() -> Result<UpdateCheckResult, String> {
         current,
         latest: release.version,
         asset: release.asset,
+        release_page: source.release_page(),
     })
 }
 
@@ -286,15 +304,16 @@ pub fn skip_version(version: &str) -> Result<(), String> {
     update_prompt_state(|state| state.skip(version))
 }
 
-fn fetch_latest_release() -> Result<LatestRelease, String> {
+fn fetch_release(source: &source::ReleaseSource) -> Result<LatestRelease, String> {
     #[cfg(feature = "update-test-source")]
     if let Some(origin) = test_source::origin()? {
         let url = format!("{origin}/release.json");
         let agent = test_source::agent(Duration::from_secs(10));
         return fetch_release_with_agent(&agent, &url);
     }
-    let agent = crate::update_proxy::agent(RELEASES_API, Duration::from_secs(10));
-    fetch_release_with_fallback(&agent, RELEASES_API, fallback::fetch_latest)
+    let api = source.api_url();
+    let agent = crate::update_proxy::agent(&api, Duration::from_secs(10));
+    fetch_release_with_fallback(&agent, &api, |status| fallback::fetch(source, status))
 }
 
 #[cfg(any(test, feature = "update-test-source"))]
@@ -329,18 +348,31 @@ fn fetch_release_with_fallback(
 fn parse_latest_release(bytes: &[u8]) -> Result<LatestRelease, String> {
     let release: GitHubRelease =
         serde_json::from_slice(bytes).map_err(|error| format!("GitHub 返回了无效数据：{error}"))?;
-    let version = release.tag_name.trim().trim_start_matches(['v', 'V']);
-    if version.is_empty() {
-        return Err("GitHub release 的版本号为空".to_owned());
-    }
-    let version = version.to_owned();
+    let tag = release.tag_name.trim();
+    let version = release_version_from_tag(tag).ok_or_else(|| {
+        if tag.is_empty() {
+            "GitHub release 的版本号为空".to_owned()
+        } else {
+            "GitHub release tag 不是可安装的 Pebrel 版本".to_owned()
+        }
+    })?;
     let asset = assets::select(
         &version,
         release.body.as_deref().unwrap_or_default(),
         &release.assets,
         &assets::native_names(&version),
     );
-    Ok(LatestRelease { version, asset })
+    Ok(LatestRelease { version, tag: tag.to_owned(), asset })
+}
+
+pub(super) fn release_version_from_tag(tag: &str) -> Option<String> {
+    let version = tag.trim().strip_prefix(['v', 'V']).unwrap_or(tag.trim());
+    (!version.is_empty()
+        && version.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        && version
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+')))
+    .then(|| version.to_owned())
 }
 
 pub(crate) fn windows_x64_installer_names(version: &str) -> [String; 3] {
@@ -435,7 +467,8 @@ mod tests {
 
     use super::{
         GitHubReleaseAsset, REMIND_LATER_SECS, UpdatePromptState, checksum_from_release_body,
-        is_newer, parse_latest_release, select_windows_x64_installer, windows_x64_installer_names,
+        is_newer, parse_latest_release, release_version_from_tag, select_windows_x64_installer,
+        windows_x64_installer_names,
     };
 
     #[test]
@@ -447,6 +480,14 @@ mod tests {
         }
         assert!(!super::version_is_installable("1.8.0", "1.8.0", false));
         assert!(super::version_is_installable("1.8.0", "1.8.0", true));
+    }
+
+    #[test]
+    fn release_tags_accept_semver_style_prereleases() {
+        assert_eq!(release_version_from_tag("v2.0.0-beta.1").as_deref(), Some("2.0.0-beta.1"));
+        assert_eq!(release_version_from_tag("V2.0.0-preview.7").as_deref(), Some("2.0.0-preview.7"));
+        assert!(release_version_from_tag("preview-v2.0.0-7").is_none());
+        assert!(release_version_from_tag("../v2.0.0").is_none());
     }
 
     #[test]

@@ -1,44 +1,58 @@
-//! GitHub's public latest-release redirect is independent of the REST API quota.
-//! The redirect proves a version; the official SHA256SUMS asset can then supply
-//! verified package metadata. If absent, retain manual download only.
+//! GitHub's public release pages are independent of the REST API quota.
+//! The redirect proves a version; a SHA256SUMS asset can then restore verified
+//! package metadata. Custom sources stay bound to the user-selected repository.
 
 use std::time::Duration;
 
 use ureq::ResponseExt as _;
 
-use super::LatestRelease;
+use super::{LatestRelease, release_version_from_tag, source::ReleaseSource};
 use crate::i18n::{LanguagePreference, Message};
 
-const LATEST_PAGE: &str = "https://github.com/Kuddev/pebrel/releases/latest";
-const TAG_PREFIX: &str = "https://github.com/Kuddev/pebrel/releases/tag/";
-
-pub(super) fn fetch_latest(status: u16) -> Result<LatestRelease, String> {
-    log::info!("update-check: API returned HTTP {status}; checking official latest-release page");
-    // Resolve proxy settings for github.com independently of api.github.com.
-    let agent = crate::update_proxy::agent(LATEST_PAGE, Duration::from_secs(10));
+pub(super) fn fetch(source: &ReleaseSource, status: u16) -> Result<LatestRelease, String> {
+    log::info!(
+        "update-check: API returned HTTP {status}; checking GitHub release page {}",
+        source.probe_page()
+    );
+    let page = source.probe_page();
+    let agent = crate::update_proxy::agent(&page, Duration::from_secs(10));
     let language =
         LanguagePreference::from(nebula_settings::RuntimeSettings::load().language).resolved();
-    let uri = redirected_uri(&agent, LATEST_PAGE).map_err(|error| {
+    let uri = redirected_uri(&agent, &page).map_err(|error| {
         language.format(
             Message::UpdateCheckFallbackFailed,
             &[("status", &status.to_string()), ("error", &error.to_string())],
         )
     })?;
-    let mut release = release_from_uri(&uri)
-        .ok_or_else(|| language.text(Message::UpdateCheckUnrecognizedRelease).to_owned())?;
-    // The official manifest restores verified download metadata during API limits.
-    // If it is unavailable, version discovery still works with manual download.
+    let mut release = release_from_uri(source, &uri).ok_or_else(|| {
+        if source.is_custom() {
+            "GitHub Release 地址没有返回可识别的 Pebrel 版本".to_owned()
+        } else {
+            language.text(Message::UpdateCheckUnrecognizedRelease).to_owned()
+        }
+    })?;
+
     let url = format!(
-        "https://github.com/Kuddev/pebrel/releases/download/v{}/SHA256SUMS",
-        release.version
+        "https://github.com/{}/releases/download/{}/SHA256SUMS",
+        source.repository(),
+        release.tag
     );
     let agent = crate::update_proxy::agent(&url, Duration::from_secs(10));
     if let Ok(mut response) = agent.get(&url).header("User-Agent", "pebrel").call()
         && let Ok(text) = response.body_mut().with_config().limit(64 * 1024).read_to_string()
     {
-        release.asset = super::assets::from_checksums(&release.version, &text);
+        release.asset = super::assets::from_checksums(
+            &release.version,
+            &text,
+            source.repository(),
+            &release.tag,
+        );
     }
     Ok(release)
+}
+
+pub(super) fn fetch_latest(status: u16) -> Result<LatestRelease, String> {
+    fetch(&ReleaseSource::official(), status)
 }
 
 fn redirected_uri(agent: &ureq::Agent, url: &str) -> Result<String, ureq::Error> {
@@ -50,28 +64,31 @@ fn redirected_uri(agent: &ureq::Agent, url: &str) -> Result<String, ureq::Error>
         .max_redirects(5)
         .build()
         .call()?;
-    // The final response URI is supplied by the HTTP client, not by untrusted
-    // markup. No HTML body needs to be downloaded or parsed.
     Ok(response.get_uri().to_string())
 }
 
-fn release_from_uri(uri: &str) -> Option<LatestRelease> {
-    let tag = uri.strip_prefix(TAG_PREFIX)?;
-    let version = tag.strip_prefix(['v', 'V']).unwrap_or(tag);
-    // Official stable releases use major.minor.patch. Reject login pages,
-    // arbitrary tags, extra path/query/fragment components and preview tags.
-    let components: Vec<_> = version.split('.').collect();
-    if components.len() != 3
-        || components.iter().any(|part| {
-            part.is_empty()
-                || !part.bytes().all(|byte| byte.is_ascii_digit())
-                || part.parse::<u64>().is_err()
-                || (part.len() > 1 && part.starts_with('0'))
-        })
-    {
+fn release_from_uri(source: &ReleaseSource, uri: &str) -> Option<LatestRelease> {
+    let prefix = format!("https://github.com/{}/releases/tag/", source.repository());
+    let tag = uri.strip_prefix(&prefix)?;
+    if !super::source::valid_tag(tag) || source.tag().is_some_and(|expected| expected != tag) {
         return None;
     }
-    Some(LatestRelease { version: version.to_owned(), asset: None })
+    let version = release_version_from_tag(tag)?;
+    if !source.is_custom() && !stable_version(&version) {
+        return None;
+    }
+    Some(LatestRelease { version, tag: tag.to_owned(), asset: None })
+}
+
+fn stable_version(version: &str) -> bool {
+    let components: Vec<_> = version.split('.').collect();
+    components.len() == 3
+        && components.iter().all(|part| {
+            !part.is_empty()
+                && part.bytes().all(|byte| byte.is_ascii_digit())
+                && part.parse::<u64>().is_ok()
+                && (part.len() == 1 || !part.starts_with('0'))
+        })
 }
 
 #[cfg(test)]
@@ -81,6 +98,7 @@ mod tests {
 
     #[test]
     fn rate_limited_api_falls_back_and_discovers_an_upgrade_without_install_authority() {
+        let source = ReleaseSource::official();
         for status in ["403 Forbidden", "429 Too Many Requests"] {
             let server = Server::start(vec![response(status, "", "API rate limit exceeded")]);
             let result = super::super::fetch_release_with_fallback(
@@ -88,7 +106,11 @@ mod tests {
                 "http://api.update.invalid/latest",
                 |code| {
                     assert!(matches!(code, 403 | 429));
-                    Ok(release_from_uri(&format!("{TAG_PREFIX}v1.9.0")).unwrap())
+                    Ok(release_from_uri(
+                        &source,
+                        "https://github.com/Kuddev/pebrel/releases/tag/v1.9.0",
+                    )
+                    .unwrap())
                 },
             )
             .unwrap();
@@ -132,7 +154,6 @@ mod tests {
 
     #[test]
     fn redirect_transport_uses_the_final_location_without_parsing_html() {
-        // The local CONNECT fixture uses HTTP; production agent requires HTTPS.
         let destination = "http://github.com/Kuddev/pebrel/releases/tag/v1.9.0";
         let server = Server::start(vec![
             response("302 Found", &format!("Location: {destination}\r\n"), ""),
@@ -149,27 +170,54 @@ mod tests {
     }
 
     #[test]
-    fn only_exact_official_stable_tag_locations_are_accepted() {
+    fn official_fallback_accepts_only_stable_tags_from_the_official_repository() {
+        let source = ReleaseSource::official();
         for tag in ["v1.9.0", "V1.9.0", "1.9.0"] {
-            assert_eq!(release_from_uri(&format!("{TAG_PREFIX}{tag}")).unwrap().version, "1.9.0");
+            assert_eq!(
+                release_from_uri(
+                    &source,
+                    &format!("https://github.com/Kuddev/pebrel/releases/tag/{tag}")
+                )
+                .unwrap()
+                .version,
+                "1.9.0"
+            );
         }
         for uri in [
-            LATEST_PAGE,
+            "https://github.com/Kuddev/pebrel/releases/latest",
             "https://github.com/login",
             "https://github.com/Other/pebrel/releases/tag/v99.0.0",
             "http://github.com/Kuddev/pebrel/releases/tag/v1.9.0",
             "https://github.com.evil.invalid/Kuddev/pebrel/releases/tag/v1.9.0",
             "https://github.com/Kuddev/pebrel/releases/tag/v1.9.0?foo=bar",
-            "https://github.com/Kuddev/pebrel/releases/tag/v1.9.0#fragment",
             "https://github.com/Kuddev/pebrel/releases/tag/v1.9.0/extra",
             "https://github.com/Kuddev/pebrel/releases/tag/v1.9.0-rc1",
-            "https://github.com/Kuddev/pebrel/releases/tag/relay-abcd",
-            "https://github.com/Kuddev/pebrel/releases/tag/v1..0",
             "https://github.com/Kuddev/pebrel/releases/tag/v01.9.0",
-            "https://github.com/Kuddev/pebrel/releases/tag/v18446744073709551616.0.0",
         ] {
-            assert!(release_from_uri(uri).is_none(), "{uri}");
+            assert!(release_from_uri(&source, uri).is_none(), "{uri}");
         }
+    }
+
+    #[test]
+    fn custom_exact_tag_fallback_accepts_a_semver_style_prerelease() {
+        let source = ReleaseSource::from_setting(
+            "https://github.com/acme/pebrel/releases/tag/v2.0.0-preview.7",
+        )
+        .unwrap();
+        let release = release_from_uri(
+            &source,
+            "https://github.com/acme/pebrel/releases/tag/v2.0.0-preview.7",
+        )
+        .unwrap();
+        assert_eq!(release.version, "2.0.0-preview.7");
+        assert_eq!(release.tag, "v2.0.0-preview.7");
+        assert!(
+            release_from_uri(
+                &source,
+                "https://github.com/acme/pebrel/releases/tag/v2.0.0-preview.8"
+            )
+            .is_none()
+        );
     }
 
     #[test]

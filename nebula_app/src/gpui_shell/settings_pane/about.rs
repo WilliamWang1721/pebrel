@@ -67,6 +67,38 @@ impl SettingsPane {
             .child(value)
     }
 
+    fn save_update_release_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let raw = self.update_release_input.read(cx).value().to_string();
+        match crate::update_check::normalize_setting(&raw) {
+            Ok(value) => {
+                self.update_release_input
+                    .update(cx, |input, cx| input.set_value(value.clone(), window, cx));
+                if self.runtime.update_release_url != value {
+                    self.persist(&[("update_release_url", value)], cx);
+                }
+                self.about_update = AboutUpdateState::Idle;
+                self.about_last_checked = None;
+                cx.notify();
+            },
+            Err(error) => crate::gpui_shell::toast::toast(
+                window,
+                cx,
+                crate::gpui_shell::toast::ToastKind::Warning,
+                error,
+            ),
+        }
+    }
+
+    fn reset_update_release_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.update_release_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.persist(&[("update_release_url", String::new())], cx);
+        self.about_update = AboutUpdateState::Idle;
+        self.about_last_checked = None;
+        cx.notify();
+    }
+
     pub(super) fn section_home(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
         let language = crate::gpui_shell::config::ui_language(cx);
         let theme = cx.theme();
@@ -77,11 +109,12 @@ impl SettingsPane {
         let danger = theme.danger;
         let base_px = self.font_size_px(cx);
         let cached_update = crate::update_download::cached_asset().filter(|asset| {
-            crate::update_check::is_newer(&asset.version, env!("CARGO_PKG_VERSION"))
-                || matches!(
-                    crate::update_download::status(asset),
-                    crate::update_download::DownloadStatus::InstallFailed(_)
-                )
+            crate::update_check::validate_asset_url(asset).is_ok()
+                && (crate::update_check::is_newer(&asset.version, env!("CARGO_PKG_VERSION"))
+                    || matches!(
+                        crate::update_download::status(asset),
+                        crate::update_download::DownloadStatus::InstallFailed(_)
+                    ))
         });
         let checking = matches!(self.about_update, AboutUpdateState::Checking);
         let (status, status_color): (SharedString, Hsla) = match &self.about_update {
@@ -183,6 +216,10 @@ impl SettingsPane {
                                             latest: asset.version.clone(),
                                             update_available: true,
                                             asset: Some(asset.clone()),
+                                            release_page: crate::update_check::configured_release_page()
+                                                .unwrap_or_else(|_| {
+                                                    crate::update_check::RELEASES_PAGE.to_owned()
+                                                }),
                                         },
                                         window,
                                         cx,
@@ -214,6 +251,32 @@ impl SettingsPane {
             .on_click(cx.listener(|this, checked: &bool, _, cx| {
                 this.persist(&[("auto_download_updates", (*checked as u8).to_string())], cx);
             }));
+        let custom_source = !self.runtime.update_release_url.trim().is_empty();
+        let source_has_value = !self.update_release_input.read(cx).value().trim().is_empty();
+        let update_source = h_flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .w(px(300.0))
+                    .min_w(px(180.0))
+                    .child(Input::new(&self.update_release_input).h(px(32.0))),
+            )
+            .child(
+                NebulaButton::new("save-update-release-source")
+                    .label(language.text(crate::i18n::Message::CommonSave))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.save_update_release_source(window, cx);
+                    })),
+            )
+            .child(
+                NebulaButton::new("reset-update-release-source")
+                    .label(language.text(crate::i18n::Message::UpdateSourceReset))
+                    .disabled(!source_has_value)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.reset_update_release_source(window, cx);
+                    })),
+            );
         let last_checked: SharedString = self
             .about_last_checked
             .clone()
@@ -243,7 +306,16 @@ impl SettingsPane {
             ))
             .child(Self::about_value_row(
                 language.pick("更新通道", "Update channel"),
-                div().text_color(muted).child("Stable"),
+                div().text_color(muted).child(language.text(if custom_source {
+                    crate::i18n::Message::UpdateSourceCustom
+                } else {
+                    crate::i18n::Message::UpdateSourceOfficial
+                })),
+                cx,
+            ))
+            .child(Self::about_value_row(
+                language.text(crate::i18n::Message::UpdateSourceLabel),
+                update_source,
                 cx,
             ))
             .child(Self::about_value_row(
@@ -251,6 +323,8 @@ impl SettingsPane {
                 div().text_color(muted).child(last_checked),
                 cx,
             ));
+        let releases_url = crate::update_check::configured_release_page()
+            .unwrap_or_else(|_| crate::update_check::RELEASES_PAGE.to_owned());
         let actions = v_flex()
             .flex_1()
             .min_w(px(280.0))
@@ -273,7 +347,7 @@ impl SettingsPane {
                 "about-releases",
                 IconName::BookOpen,
                 language.pick("更新内容", "Release notes"),
-                crate::update_check::RELEASES_PAGE.to_owned(),
+                releases_url,
                 cx,
             ))
             .child(Self::about_page_row(

@@ -802,6 +802,11 @@
       "network": "Could not download the update. Check your network and proxy settings, or use the Releases page."
     },
     "auto_download": "Download updates in the background",
+    "source_label": "Custom release source",
+    "source_placeholder": "https://github.com/owner/repo/releases",
+    "source_official": "Official stable",
+    "source_custom": "Custom GitHub release",
+    "source_reset": "Reset",
     "stop_download": "Stop download",
     "skip_version": "Skip version",
     "restart_install": "Restart and install",
