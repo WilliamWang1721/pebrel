@@ -87,6 +87,10 @@ pub(super) fn help(key: &str, language: UiLanguage) -> SettingHelp {
             language.pick("程序提示时，选择声音或闪烁提醒。", "Chooses sound or visual feedback for terminal alerts."),
             None,
         ),
+        "system_notifications" => (
+            language.text(crate::i18n::Message::SettingsNotificationsSystemDescription),
+            Some(language.text(crate::i18n::Message::SettingsNotificationsSystemDetails)),
+        ),
         "ai_toasts" => (
             language.text(crate::i18n::Message::SettingsNotificationsAiMessagesDescription),
             Some(language.text(crate::i18n::Message::SettingsNotificationsAiMessagesDetails)),
@@ -191,6 +195,7 @@ mod tests {
             "shell",
             "startup_directory",
             "bell",
+            "system_notifications",
             "ai_toasts",
             "notification_duration",
             "font_family",
