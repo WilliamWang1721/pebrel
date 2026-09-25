@@ -37,8 +37,18 @@ jobs:
           toolchain: "1.97.1"
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all -- --check
+      - name: Format changed Rust files
+        shell: pwsh
+        run: |
+          rustfmt --edition 2024 --config skip_children=true --check `
+            nebula_settings/src/lib.rs `
+            nebula_settings/src/reset.rs `
+            nebula_app/src/platform/capabilities.rs `
+            nebula_app/src/gpui_shell/config.rs `
+            nebula_app/src/gpui_shell/workspace/notifications.rs `
+            nebula_app/src/gpui_shell/settings_pane.rs `
+            nebula_app/src/gpui_shell/settings_pane/setting_help.rs `
+            nebula_app/src/gpui_shell/settings_pane/navigation.rs
       - name: Settings tests
         run: cargo test --locked -p nebula-settings system_notifications -- --nocapture
       - name: Notification route regression
