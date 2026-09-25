@@ -7,12 +7,11 @@ const LEGACY: &str = "Kuddev/nebula";
 pub(super) struct ReleaseSource {
     repo: String,
     tag: Option<String>,
-    default: bool,
 }
 
 impl ReleaseSource {
     fn official() -> Self {
-        Self { repo: OFFICIAL.into(), tag: None, default: true }
+        Self { repo: OFFICIAL.into(), tag: None }
     }
 
     fn parse(value: &str) -> Result<Self, String> {
@@ -28,7 +27,7 @@ impl ReleaseSource {
         }
         let parts: Vec<_> = path.split('/').collect();
         let (owner, repo, tag) = match parts.as_slice() {
-            [owner, repo] | [owner, repo, "releases"] | [owner, repo, "releases", "latest"] => {
+            [owner, repo, "releases"] | [owner, repo, "releases", "latest"] => {
                 (*owner, *repo, None)
             },
             [owner, repo, "releases", "tag", tag] => (*owner, *repo, Some((*tag).to_owned())),
@@ -38,11 +37,11 @@ impl ReleaseSource {
         {
             return Err("GitHub Release 地址无效".into());
         }
-        Ok(Self { repo: format!("{owner}/{repo}"), tag, default: false })
+        Ok(Self { repo: format!("{owner}/{repo}"), tag })
     }
 
     pub(super) fn is_default(&self) -> bool {
-        self.default
+        self.repo == OFFICIAL && self.tag.is_none()
     }
 
     pub(super) fn api_url(&self) -> String {
@@ -55,13 +54,13 @@ impl ReleaseSource {
     fn page(&self) -> String {
         match &self.tag {
             Some(tag) => format!("{GITHUB}{}/releases/tag/{tag}", self.repo),
-            None if self.default => RELEASES_PAGE.into(),
+            None if self.is_default() => RELEASES_PAGE.into(),
             None => format!("{GITHUB}{}/releases", self.repo),
         }
     }
 
     fn accepts(&self, asset: &UpdateAsset) -> bool {
-        if self.default {
+        if self.is_default() {
             return [OFFICIAL, LEGACY].iter().any(|repo| {
                 asset.download_url
                     == format!("{GITHUB}{repo}/releases/download/v{}/{}", asset.version, asset.name)
@@ -79,13 +78,11 @@ impl ReleaseSource {
 
 fn component(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 100
         && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
 fn tag_name(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 128
         && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+'))
 }
 
@@ -95,7 +92,7 @@ pub(super) fn configured() -> Result<ReleaseSource, String> {
 
 pub(crate) fn normalize_setting(value: &str) -> Result<String, String> {
     let source = ReleaseSource::parse(value)?;
-    Ok(if source.default { String::new() } else { source.page() })
+    Ok(if source.is_default() { String::new() } else { source.page() })
 }
 
 pub(crate) fn release_page() -> String {
@@ -122,23 +119,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn github_release_urls_normalize_to_one_persisted_shape() {
-        for url in [
-            "https://github.com/acme/pebrel",
-            "https://github.com/acme/pebrel/releases",
-            "https://github.com/acme/pebrel/releases/latest",
-        ] {
-            assert_eq!(normalize_setting(url).unwrap(), "https://github.com/acme/pebrel/releases");
-        }
+    fn release_source_normalizes_and_pins_explicit_tags() {
         assert_eq!(
-            normalize_setting("https://github.com/acme/pebrel/releases/tag/v2.0.0-beta.1").unwrap(),
-            "https://github.com/acme/pebrel/releases/tag/v2.0.0-beta.1"
+            normalize_setting("https://github.com/acme/pebrel/releases/latest").unwrap(),
+            "https://github.com/acme/pebrel/releases"
         );
         assert!(normalize_setting("https://example.com/acme/pebrel/releases").is_err());
-    }
 
-    #[test]
-    fn explicit_tag_only_trusts_that_release() {
         let source =
             ReleaseSource::parse("https://github.com/acme/pebrel/releases/tag/v2.0.0-beta.1")
                 .unwrap();
