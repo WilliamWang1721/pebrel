@@ -241,10 +241,8 @@ mod tests {
 
     #[test]
     fn system_notification_switch_only_controls_the_native_channel() {
-        let notification = Notification::Text {
-            program: Some("cargo".into()),
-            body: "build finished".into(),
-        };
+        let notification =
+            Notification::Text { program: Some("cargo".into()), body: "build finished".into() };
         for visible in [false, true] {
             let enabled = delivery_channels(&notification, visible, true, true);
             let disabled = delivery_channels(&notification, visible, true, false);
