@@ -4,17 +4,97 @@ on:
     branches: [ci/mcp-tab-development-20260925]
 permissions:
   contents: read
+concurrency:
+  group: mcp-development
+  cancel-in-progress: true
 jobs:
-  source:
-    runs-on: ubuntu-latest
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: source
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 9dc058d12765893553d5fc7a2c37c870c96168b0
-      - name: Archive exact upstream source
-        run: git archive --format=zip HEAD -o /tmp/pebrel-source.zip
-      - uses: actions/upload-artifact@v4
+          path: driver
+          persist-credentials: false
+      - uses: actions/checkout@v4
         with:
-          name: pebrel-source
-          path: /tmp/pebrel-source.zip
-          retention-days: 1
+          ref: 9dc058d12765893553d5fc7a2c37c870c96168b0
+          path: source
+          persist-credentials: false
+      - name: Verify and apply the locally developed patch
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,pathlib,subprocess
+          encoded=''.join(p.read_text().strip() for p in sorted(pathlib.Path('../driver/.github/mcp-development').glob('patch-*.b64')))
+          encoded=encoded.replace('PX3hm8+QYywAqV','PX3hm8+QY5ywAqV').replace('ztsAmK/vpyRcj48','ztsAmK/v3Xj48').replace('OGj05ptYpgVFd','OGj05ptYwgVFd')
+          pathlib.Path('/tmp/transferred.b64').write_text(encoded)
+          patch=gzip.decompress(base64.b64decode(encoded))
+          assert hashlib.sha256(patch).hexdigest()=='e5ec2a23f0d05d927876d26dacbe1f6d171ded3fbddcc793d1846bb1d131d15b'
+          subprocess.run(['git','apply','--whitespace=error','-'],input=patch,check=True)
+          subprocess.run(['git','add','-N','.'],check=True)
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Format and check lightweight contracts
+        run: |
+          cargo fmt --all
+          git diff --check
+          python3 scripts/check_architecture.py --base HEAD
+          rustc --edition 2024 --test --crate-name nebula_settings nebula_settings/src/lib.rs -o /tmp/settings-tests
+          /tmp/settings-tests
+      - name: Export formatted local changes
+        if: always()
+        run: |
+          mkdir -p /tmp/mcp-results
+          cp /tmp/transferred.b64 /tmp/mcp-results/ || true
+          git diff --binary > /tmp/mcp-results/formatted.patch
+          git diff --stat > /tmp/mcp-results/stat.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-formatted
+          path: /tmp/mcp-results/
+          retention-days: 2
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config zsh libasound2-dev libdbus-1-dev libudev-dev libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xinput-dev libxcb-xkb-dev libxi-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: source
+          shared-key: mcp-development
+          save-if: true
+          cache-on-failure: true
+      - name: Check the actual application and tests
+        env:
+          CARGO_BUILD_JOBS: '2'
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          CARGO_INCREMENTAL: '0'
+        run: |
+          set -o pipefail
+          cargo check -p nebula --bin pebrel --tests --features gpui-shell --message-format=short 2>&1 | tee /tmp/mcp-results/check.log
+      - name: Run MCP regression tests
+        env:
+          CARGO_BUILD_JOBS: '2'
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          CARGO_INCREMENTAL: '0'
+        run: |
+          set -o pipefail
+          cargo test -p nebula --bin pebrel --features gpui-shell mcp:: -- --nocapture 2>&1 | tee /tmp/mcp-results/tests.log
+      - name: Collect resolved lockfile and validation patch
+        if: always()
+        run: |
+          cp Cargo.lock /tmp/mcp-results/
+          git diff --binary > /tmp/mcp-results/validated.patch
+          git diff --stat > /tmp/mcp-results/stat.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-validation
+          path: /tmp/mcp-results/
+          retention-days: 2
