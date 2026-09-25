@@ -74,7 +74,9 @@ impl ReleaseSource {
             });
         }
         let prefix = format!("{GITHUB}{}/releases/download/", self.repo);
-        let Some(path) = asset.download_url.strip_prefix(&prefix) else { return false };
+        let Some(path) = asset.download_url.strip_prefix(&prefix) else {
+            return false;
+        };
         let mut parts = path.split('/');
         let (Some(tag), Some(name), None) = (parts.next(), parts.next(), parts.next()) else {
             return false;
