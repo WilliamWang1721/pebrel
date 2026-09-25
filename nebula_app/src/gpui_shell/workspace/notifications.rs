@@ -209,11 +209,8 @@ mod tests {
 
     #[test]
     fn disabling_system_notifications_only_disables_the_native_channel() {
-        let notification = Notification::AiTurn {
-            program: "codex".into(),
-            message: None,
-            attention: true,
-        };
+        let notification =
+            Notification::AiTurn { program: "codex".into(), message: None, attention: true };
         assert_eq!(
             delivery_channels(&notification, false, true, false),
             DeliveryChannels { in_app: true, system: false }
