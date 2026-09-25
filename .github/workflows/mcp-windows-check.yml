@@ -5,6 +5,7 @@ on:
     paths: [.github/workflows/mcp-windows-check.yml]
 permissions:
   contents: read
+  actions: read
 jobs:
   windows:
     runs-on: windows-latest
@@ -17,41 +18,34 @@ jobs:
       CARGO_INCREMENTAL: 0
       PYTHONUTF8: 1
     steps:
+      - name: Use exact source newlines before checkout
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: 9dc058d12765893553d5fc7a2c37c870c96168b0
+          fetch-depth: 1
           persist-credentials: false
-      - name: Restore exact local candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-validation-Linux
+          run-id: 36148931615
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/validated-mcp
+      - name: Restore exact validated candidate
         run: |
           python3 - <<'PY'
-          import base64, gzip, hashlib, pathlib, os
-          p = pathlib.Path('.github')
-          temp = pathlib.Path(os.environ['RUNNER_TEMP'])
-          data = ''.join((p / f'mcp-local-patch.{i}.b64').read_text(encoding='utf-8').strip() for i in (0,1))
-          data += (p / 'mcp-local-patch.2.b64').read_text(encoding='utf-8').strip()[:4174]
-          data += (p / 'mcp-local-patch.3.b64').read_text(encoding='utf-8').strip()
-          patch = gzip.decompress(base64.b64decode(data, validate=True))
-          assert hashlib.sha256(patch).hexdigest() == 'c0578e8650aab145d6cd7df0001a6361ff5135ce430e06187aecd1923b2221eb'
-          (temp / 'mcp.patch').write_bytes(patch)
-          patch = (p / 'mcp-followup.patch').read_text(encoding='utf-8').encode('utf-8')
-          assert hashlib.sha256(patch).hexdigest() == '8b74087cedab4a707cc7fc4de89683ff7ba12d155079d909ff4f39f1ced10420'
-          (temp / 'mcp-followup.patch').write_bytes(patch)
+          import hashlib, pathlib, os
+          patch = pathlib.Path(os.environ['RUNNER_TEMP']) / 'validated-mcp/candidate.patch'
+          assert hashlib.sha256(patch.read_bytes()).hexdigest() == '48d42401f91746a167e3be506e7d4c834bbab2065d16fb3da52d1cd789711663'
           PY
-          git config core.autocrlf false
-          git checkout --detach 9dc058d12765893553d5fc7a2c37c870c96168b0
-          git checkout-index --all --force
-          git apply --index "$RUNNER_TEMP/mcp.patch"
+          git apply --index "$RUNNER_TEMP/validated-mcp/candidate.patch"
+          git diff --cached --check
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.97.1'
           components: rustfmt
-      - name: Apply reviewed local fixes
-        run: |
-          cargo fmt --all
-          git apply "$RUNNER_TEMP/mcp-followup.patch"
-          cargo fmt --all
-          git add nebula_app nebula_settings docs/runtime-control-api.md architecture/notes/nebula_app/mcp
-          git diff --cached --check
+      - name: Formatting
+        run: cargo fmt --all -- --check
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: mcp-gpui-ci
@@ -59,21 +53,18 @@ jobs:
       - name: Compile actual application and tests
         run: |
           set -o pipefail
-          cargo --config .github/ci-profile.toml check --profile ci -p nebula --bin pebrel --features gpui-shell --tests 2>&1 | tee "$RUNNER_TEMP/mcp-build.log"
+          cargo --config .github/ci-profile.toml check --locked --profile ci -p nebula --bin pebrel --features gpui-shell --tests 2>&1 | tee "$RUNNER_TEMP/mcp-build.log"
       - name: MCP tests
         run: |
           set -o pipefail
           cargo --config .github/ci-profile.toml test --locked --profile ci -p nebula --bin pebrel --features gpui-shell mcp:: 2>&1 | tee "$RUNNER_TEMP/mcp-tests.log"
       - name: Architecture contracts
         run: python3 scripts/check_architecture.py --base 9dc058d12765893553d5fc7a2c37c870c96168b0
-      - name: Export candidate and diagnostics
+      - name: Export diagnostics
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/mcp-results"
-          git add nebula_app nebula_settings Cargo.lock docs/runtime-control-api.md architecture/notes/nebula_app/mcp
-          git diff --cached --binary > "$RUNNER_TEMP/mcp-results/candidate.patch"
           git diff --cached --stat > "$RUNNER_TEMP/mcp-results/stat.txt"
-          cp Cargo.lock "$RUNNER_TEMP/mcp-results/"
           cp "$RUNNER_TEMP"/mcp-*.log "$RUNNER_TEMP/mcp-results/" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
