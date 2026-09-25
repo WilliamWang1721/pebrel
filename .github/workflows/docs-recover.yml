@@ -1,0 +1,26 @@
+name: Recover documentation checkpoint
+on:
+  push:
+    branches: [automation/docs-source-20260924]
+    paths: [.github/workflows/docs-recover.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/complete-user-guide-20260924
+          persist-credentials: false
+      - name: Archive checkpoint and offline build dependencies
+        run: |
+          mkdir -p export/wheels
+          git archive --format=zip HEAD > export/checkpoint.zip
+          git rev-parse HEAD > export/HEAD
+          python -m pip download --no-deps -r docs/site/requirements.txt -d export/wheels
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-recovery
+          path: export/
+          retention-days: 14
