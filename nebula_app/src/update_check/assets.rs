@@ -44,12 +44,7 @@ pub(super) fn select(
     })
 }
 
-pub(super) fn from_checksums(
-    version: &str,
-    text: &str,
-    repository: &str,
-    tag: &str,
-) -> Option<UpdateAsset> {
+pub(super) fn from_checksums(version: &str, text: &str) -> Option<UpdateAsset> {
     native_names(version).iter().find_map(|name| {
         let hashes: Vec<_> = text
             .lines()
@@ -67,7 +62,7 @@ pub(super) fn from_checksums(
             version: version.into(),
             name: name.clone(),
             download_url: format!(
-                "https://github.com/{repository}/releases/download/{tag}/{name}"
+                "https://github.com/Kuddev/pebrel/releases/download/v{version}/{name}"
             ),
             size: None,
             sha256: hashes.into_iter().next(),
@@ -102,29 +97,10 @@ mod tests {
     fn checksum_manifest_requires_one_exact_valid_entry() {
         let Some(name) = native_names("1.9.0").into_iter().next() else { return };
         let entry = format!("{}  {name}\n", "a".repeat(64));
-        assert!(from_checksums("1.9.0", &entry, "Kuddev/pebrel", "v1.9.0").is_some());
-        assert!(
-            from_checksums(
-                "1.9.0",
-                &(entry.clone() + &entry),
-                "Kuddev/pebrel",
-                "v1.9.0"
-            )
-            .is_none()
-        );
-        assert!(
-            from_checksums("1.9.0", &format!("bad  {name}"), "Kuddev/pebrel", "v1.9.0")
-                .is_none()
-        );
-        assert!(
-            from_checksums(
-                "1.9.0",
-                &entry.replace(&name, &(name.clone() + ".bak")),
-                "Kuddev/pebrel",
-                "v1.9.0"
-            )
-            .is_none()
-        );
-        assert!(from_checksums("1.9.1", &entry, "Kuddev/pebrel", "v1.9.1").is_none());
+        assert!(from_checksums("1.9.0", &entry).is_some());
+        assert!(from_checksums("1.9.0", &(entry.clone() + &entry)).is_none());
+        assert!(from_checksums("1.9.0", &format!("bad  {name}")).is_none());
+        assert!(from_checksums("1.9.0", &entry.replace(&name, &(name.clone() + ".bak"))).is_none());
+        assert!(from_checksums("1.9.1", &entry).is_none());
     }
 }
