@@ -15,4 +15,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rust toolchain
         shell: pwsh
-        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup default 1.97.1
+      - name: Prepare console runtime
+        shell: pwsh
+        run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
+      - name: Format
+        run: cargo fmt --all -- --check
