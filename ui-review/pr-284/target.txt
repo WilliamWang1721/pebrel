@@ -1,0 +1,1 @@
+Sidebar resize setting and default resizable sidebar behavior
