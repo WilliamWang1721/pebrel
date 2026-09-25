@@ -65,7 +65,7 @@ jobs:
 
           supplement = json.loads(
               gzip.decompress(base64.b64decode(extra_encoded, validate=True))
-          )
+          )['files']
           for name, content in supplement.items():
               path = (root / name).resolve()
               assert path.is_relative_to(root)
