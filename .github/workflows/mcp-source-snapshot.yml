@@ -1,0 +1,28 @@
+name: MCP source snapshot
+on:
+  push:
+    branches: [chore/mcp-source-snapshot-20260925]
+    paths: [.github/workflows/mcp-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Archive upstream source and provenance
+        run: |
+          mkdir -p "$RUNNER_TEMP/source"
+          git rev-parse HEAD > "$RUNNER_TEMP/source/UPSTREAM_SHA"
+          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/source/pebrel-main.tar.gz"
+          git bundle create "$RUNNER_TEMP/source/pebrel-main.bundle" HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-main-source
+          path: ${{ runner.temp }}/source/
+          retention-days: 3
