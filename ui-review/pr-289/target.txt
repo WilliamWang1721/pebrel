@@ -1,0 +1,1 @@
+Foreground macOS system-notification delivery and full-app regression state
