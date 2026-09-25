@@ -87,6 +87,8 @@ fn application_activation(pane_id: Option<u64>) -> Option<ToastActivation> {
 /// Something that happened in a pane which may deserve attention.
 #[derive(Debug, Clone)]
 pub enum Notification {
+    /// A local MCP approval card, not terminal content and never remotely clickable.
+    RemoteApproval { body: String },
     /// BEL from the shell/TUI. AI CLIs ring this when a turn completes, so
     /// it is the primary "claude/codex finished" signal. Carries the tracked
     /// program name (e.g. "claude", "codex") when one is running, so the toast
@@ -200,6 +202,7 @@ impl Notification {
     /// notifications or infer an AI source from arbitrary message text.
     pub(crate) fn is_ai(&self) -> bool {
         let program = match self {
+            Self::RemoteApproval { .. } => return false,
             Self::AiTurn { .. } | Self::AiTurnIssue { .. } => return true,
             Self::Bell { program }
             | Self::CommandDone { program, .. }
@@ -218,6 +221,10 @@ impl Notification {
 
     pub(crate) fn raw_toast_text(&self) -> (String, String) {
         match self {
+            Self::RemoteApproval { body } => (
+                notification_language().text(crate::i18n::Message::McpApprovalRequested).into(),
+                body.clone(),
+            ),
             Self::Bell { program } => match program {
                 Some(p) => (
                     p.clone(),
@@ -264,7 +271,7 @@ impl Notification {
     }
 
     pub(crate) fn is_attention(&self) -> bool {
-        matches!(self, Self::AiTurn { attention: true, .. })
+        matches!(self, Self::AiTurn { attention: true, .. } | Self::RemoteApproval { .. })
     }
 }
 

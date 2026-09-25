@@ -399,3 +399,51 @@ token。无 token 的连接会被静默丢弃。该边界用于阻止其他本�
 
 旧版 `PING/ATTACH` 文本请求仍由同一服务端接受，保证单实例与会话重新挂载不因协议升级
 失效；新功能只通过版本化 JSON 协议开放。
+
+
+## 按终端分享 MCP（GPUI）
+
+设置 → 高级 → **Enable terminal MCP sharing** 默认关闭。开启后，在终端标签的
+右上角或侧栏 `⋯` 菜单选择 **Expose terminal to AI**；终端下方出现分享面板。
+分享绑定当前真实终端，不新建隐藏 Shell。分屏后只分享所选 Pane，不自动分享同 Tab
+的其他 Pane。第一版支持本地和 WSL 终端；内置 SSH 会话不开放分享。
+
+**Copy MCP connection** 复制当前分享的本地 Streamable HTTP URL 和 Authorization
+header。原生 MCP 客户端必须同时配置两项。每次分享生成新的随机路径和 Bearer token；
+不要公开这份连接信息。端点只监听 `127.0.0.1`，不对浏览器开放 CORS，不接受 Origin
+header。MCP framing、初始化、SSE 和客户端取消由 `rmcp` 处理；工具合同由
+[`mcp/http.rs`](../nebula_app/src/mcp/http.rs) 中的 `tools/list` 定义。
+
+默认 **Ask for Approval**：读取无需询问；命令、文本输入和控制键都必须在这个终端下
+点击 **Approve once** 后才提交。一次批准对应显示的完整输入，而不是其中每条 Shell
+子命令；批准脚本也会批准脚本产生的操作。每个分享最多一个待提交写操作，不排队。
+未批准请求五分钟过期，客户端可以更早取消。终端输入改变会使旧批准失效。
+**Dangerous Full Permissions** 跳过这些本地询问，仍只通过同一个终端执行。
+
+通知复用现有应用内/系统通知渠道与用户通知设置；点击通知定位终端，不直接执行。
+关闭通知不会批准请求。停止分享、关闭终端或关闭总开关会撤销连接及未提交请求，
+但不会回滚或终止已经提交的程序。已接受提交后连接中断时，应先读取状态，不能盲目重试。
+
+命令成功响应表示已提交，不表示运行成功；继续读取取得真实输出及可用的运行结果。
+没有可信 Shell integration 结果时不推测退出码。交互式程序使用文本输入或命名控制键；
+多行粘贴仍要求终端提供 bracketed-paste 模式。读取仅包含当前仍保留的 Grid/scrollback，
+不会加载 `.bash_history` 等文件，也不保证拿到已被覆盖、清除或超过上限的完整输出。
+
+### OpenAI Secure MCP Tunnel
+
+先安装官方 [tunnel-client](https://github.com/openai/tunnel-client)，创建可用的 Tunnel ID
+与 **Runtime API key**，然后在分享面板填写 helper 路径、该终端专用 Tunnel ID 和 key，
+点击 **Start tunnel helper**。不使用 admin key。Pebrel 启动 helper 并自动设置本地目标
+与 Bearer header；key 不写入 Pebrel 设置，启动后清空输入框。分享停止会停止并回收 helper。
+不同终端必须使用不同 Tunnel ID；Pebrel 拒绝同时占用同一个 ID。
+
+在具备相应权限的 ChatGPT 中创建 Tunnel 类型的 MCP app，选择对应 Tunnel ID；本地
+目标鉴权由 helper 注入，不在此 app 中配置额外 OAuth。ChatGPT 的入口与资格以
+[官方指南](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) 为准。
+**Helper running** 仅确认本地进程已启动，不代表云端认证或连接成功。错误时先使用
+官方 helper 的 `doctor` 核对 ID、runtime key、角色和出站网络；Pebrel 不自行创建账户、
+Tunnel 或平台权限，也不将终端公开到互联网。
+
+分享和批准记录不跨应用重启恢复。分享限制是 MCP 路由边界，**不是 OS sandbox**：
+已经获准执行的代码仍具有该终端用户的文件、网络和进程权限，可能访问其他本机资源。
+已有终端的历史可能含敏感信息，分享前应确认。不要把非交互的 MCP token 当成系统隔离。

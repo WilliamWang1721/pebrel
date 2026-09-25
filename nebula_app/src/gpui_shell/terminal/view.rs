@@ -9,6 +9,7 @@ mod confirmation;
 mod cwd_report;
 mod image_paste;
 mod layout;
+mod mcp;
 #[cfg(all(test, windows, feature = "gpui-test-support"))]
 mod native_cmd_tests;
 mod notifications;
@@ -315,6 +316,7 @@ pub struct TerminalView {
     last_process_probe: Option<std::time::Instant>,
     prompt_process_probe: Option<gpui::Task<()>>,
     prompt_input_epoch: u64,
+    mcp: Option<mcp::Sharing>,
     native_prompt_seen: bool,
     native_prompt_epoch: Option<u64>,
     last_prompt_process_probe: Option<std::time::Instant>,
@@ -712,6 +714,9 @@ impl TerminalView {
 
     /// 让 EventLoop 退出并回收 ConPTY/子进程。幂等：重复调用只会得到发送失败。
     pub fn shutdown(&self) {
+        if let Some(sharing) = &self.mcp {
+            sharing.share.stop();
+        }
         if let Some(session) = &self.session {
             let _ = session.notifier.0.send(Msg::Shutdown);
         }
@@ -1477,7 +1482,11 @@ impl Render for TerminalView {
                 );
             }
         }
-        root.into_any_element()
+        let mut content = div().flex().flex_col().size_full().child(root.flex_1().min_h_0());
+        if self.mcp.is_some() {
+            content = content.child(self.render_mcp(cx));
+        }
+        content.into_any_element()
     }
 }
 

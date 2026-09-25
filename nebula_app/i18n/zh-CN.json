@@ -921,5 +921,30 @@
     "move_left": "向左移动",
     "move_right": "向右移动",
     "tab_color": "标签颜色"
+  },
+  "mcp": {
+    "local_only": "MCP 共享目前支持本地与 WSL 终端，不支持内置 SSH 会话。",
+    "enabled": "启用终端 MCP 分享",
+    "enabled_help": "向 AI 客户端分享指定终端。关闭会停止全部分享和隧道辅助进程。",
+    "expose": "向 AI 分享此终端",
+    "choose_terminal": "选择终端",
+    "sharing": "AI 终端分享",
+    "stop": "停止分享",
+    "ask": "Ask for Approval（逐次询问）",
+    "full": "Dangerous Full Permissions（无需询问）",
+    "warning": "命令使用此终端账户的系统权限；这不是沙盒。分享也会开放已保留的终端历史。",
+    "copy_connection": "复制 MCP 连接信息（地址和密钥）",
+    "tunnel_id": "OpenAI Tunnel ID",
+    "runtime_key": "Runtime API key（不保存）",
+    "tunnel_help": "OpenAI Secure MCP Tunnel：安装官方 tunnel-client，然后为此终端填写独立的 Tunnel ID 和运行密钥。",
+    "tunnel_required": "请填写辅助程序路径、Tunnel ID 和运行密钥。",
+    "start_helper": "启动隧道辅助程序",
+    "stop_helper": "停止隧道辅助程序",
+    "helper_starting": "正在启动辅助程序…",
+    "helper_running": "辅助程序已启动，尚未验证 OpenAI 连接",
+    "helper_stopped": "隧道辅助程序已停止",
+    "helper_failed": "隧道辅助程序失败：{error}",
+    "approval_requested": "远端 AI 请求授权",
+    "approve": "仅同意本次"
   }
 }

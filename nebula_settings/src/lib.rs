@@ -1019,6 +1019,8 @@ pub struct RuntimeSettings {
     /// AI message toasts inside the application. System notifications and
     /// terminal/tab state are independent. Default on for existing users.
     pub ai_toasts: bool,
+    /// Enable the opt-in, locally approved MCP terminal gateway.
+    pub mcp_enabled: bool,
     /// Display lifetime for in-app cards; default mode retains each kind's lifetime.
     pub notification_duration: NotificationDuration,
     /// 新会话欢迎屏 fastfetch（默认关：启动速度优先于观感，旧壳裁定）。
@@ -1199,6 +1201,7 @@ impl RuntimeSettings {
                 .unwrap_or_default(),
             bell: raw.value("bell").and_then(BellModeName::from_settings).unwrap_or_default(),
             ai_toasts: raw.bool_on("ai_toasts").unwrap_or(true),
+            mcp_enabled: raw.bool_on("mcp_enabled").unwrap_or(false),
             notification_duration: raw
                 .value("notification_duration")
                 .and_then(NotificationDuration::from_settings)
@@ -1570,6 +1573,26 @@ mod tests {
             !RuntimeSettings::from_raw(&RawSettings::from_text("auto_check_updates=0\n"))
                 .auto_check_updates
         );
+    }
+
+    #[test]
+    fn mcp_is_opt_in_and_round_trips_without_replacing_other_settings() {
+        for value in ["", "invalid", "0", "false", "off"] {
+            assert!(
+                !RuntimeSettings::from_raw(&RawSettings::from_text(&format!(
+                    "mcp_enabled={value}\n"
+                )))
+                .mcp_enabled
+            );
+        }
+        let original = "# preferences\nshell=zsh\ncustom_key=keep\n";
+        for value in ["1", "true", "On", "YES"] {
+            let text = apply_updates(original, &[("mcp_enabled", value.into())]);
+            let settings = RuntimeSettings::from_raw(&RawSettings::from_text(&text));
+            assert!(settings.mcp_enabled);
+            assert!(text.contains("custom_key=keep"));
+            assert_eq!(settings.shell.as_deref(), Some("zsh"));
+        }
     }
 
     #[test]

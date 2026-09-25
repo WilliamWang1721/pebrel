@@ -380,7 +380,8 @@ impl SettingsPane {
             cx.notify();
             return;
         }
-        if matches!(key, "ai_toasts" | "focus_follows_mouse" | "dim_inactive_panes") {
+        if matches!(key, "ai_toasts" | "mcp_enabled" | "focus_follows_mouse" | "dim_inactive_panes")
+        {
             if let Err(error) = self.try_persist(&[(key, (value as u8).to_string())], cx) {
                 let language = crate::gpui_shell::config::ui_language(cx);
                 super::toast::toast(
@@ -745,6 +746,7 @@ impl SettingsPane {
             "powerline" => flag!(powerline),
             "ghost" => flag!(ghost),
             "ai_toasts" => flag!(ai_toasts),
+            "mcp_enabled" => flag!(mcp_enabled),
             "notification_duration" => pick!(notification_duration),
             "cjk_bold_regular" => flag!(cjk_bold_regular),
             "fetch" => flag!(fetch),
@@ -1228,6 +1230,13 @@ impl SettingsPane {
         // `platform::capabilities` 的说明）。
         let caps = crate::platform::CAPABILITIES;
         self.group(language.pick("会话生命周期", "Session lifecycle"), cx)
+            .child(self.switch_row(
+                "mcp_enabled",
+                language.text(crate::i18n::Message::McpEnabled),
+                language.text(crate::i18n::Message::McpEnabledHelp),
+                self.runtime.mcp_enabled,
+                cx,
+            ))
             .when(caps.launch_at_login, |group| {
                 group.child(self.switch_row(
                     "launch_at_login",

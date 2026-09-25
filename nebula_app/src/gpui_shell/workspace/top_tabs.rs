@@ -628,10 +628,11 @@ impl NebulaWorkspace {
                         top_tab_action_slot(
                             top_tabs_menu_button(settings_active).dropdown_menu_with_anchor(
                                 gpui::Anchor::TopRight,
-                                move |menu, _, _| {
+                                move |menu, _, cx| {
                                     let shell_picker = menu_workspace.clone();
                                     let new_window = menu_workspace.clone();
                                     let settings = menu_workspace.clone();
+                                    let mcp = menu_workspace.clone();
                                     menu.external_link_icon(false)
                                         .item(
                                             PopupMenuItem::new("新建窗口")
@@ -659,6 +660,7 @@ impl NebulaWorkspace {
                                                     }
                                                 }),
                                         )
+                                        .item(Self::mcp_menu_item(mcp, cx))
                                         .separator()
                                         .item(
                                             PopupMenuItem::new("设置")

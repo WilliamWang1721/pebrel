@@ -82,6 +82,8 @@ mod logging;
 mod macos;
 mod markdown;
 mod math;
+#[cfg(feature = "gpui-shell")]
+mod mcp;
 mod message_bar;
 mod migrate;
 mod motion;

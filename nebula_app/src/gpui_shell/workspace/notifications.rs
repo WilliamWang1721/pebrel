@@ -37,6 +37,7 @@ impl NebulaWorkspace {
         cx: &mut Context<Self>,
     ) {
         if notification.is_attention()
+            && !matches!(notification, Notification::RemoteApproval { .. })
             && let Some(source) = self.tabs.iter().find_map(|tab| match tab {
                 WorkspaceTab::Terminal { panes, .. } => {
                     panes.iter().find(|pane| pane.id == pane_id).map(|pane| pane.view.clone())
@@ -119,11 +120,12 @@ impl NebulaWorkspace {
             return;
         }
         let attention = notification.is_attention();
-        let confirmation = if attention {
-            source_view.and_then(|view| view.update(cx, |view, _| view.capture_confirmation()))
-        } else {
-            None
-        };
+        let confirmation =
+            if attention && !matches!(notification, Notification::RemoteApproval { .. }) {
+                source_view.and_then(|view| view.update(cx, |view, _| view.capture_confirmation()))
+            } else {
+                None
+            };
         if delivery.in_app {
             // Log the original message before the banner creates a bounded preview.
             let (title, body) = notification.raw_toast_text();

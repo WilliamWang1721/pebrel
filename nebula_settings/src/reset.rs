@@ -42,6 +42,7 @@ const RESET_KEYS: &[&str] = &[
     "vcs_display",
     "bell",
     "ai_toasts",
+    "mcp_enabled",
     "notification_duration",
     "fetch",
     "auto_check_updates",

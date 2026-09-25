@@ -921,5 +921,30 @@
     "move_left": "Move left",
     "move_right": "Move right",
     "tab_color": "Tab color"
+  },
+  "mcp": {
+    "local_only": "MCP sharing currently supports local and WSL terminals, not built-in SSH sessions.",
+    "enabled": "Enable terminal MCP sharing",
+    "enabled_help": "Share selected terminals with AI clients. Off stops all shares and tunnel helpers.",
+    "expose": "Expose terminal to AI",
+    "choose_terminal": "Choose terminal",
+    "sharing": "AI terminal sharing",
+    "stop": "Stop sharing",
+    "ask": "Ask for Approval",
+    "full": "Dangerous Full Permissions",
+    "warning": "Commands use this terminal’s OS account; this is not a sandbox. Sharing also exposes retained terminal history.",
+    "copy_connection": "Copy MCP connection (URL and secret token)",
+    "tunnel_id": "OpenAI Tunnel ID",
+    "runtime_key": "Runtime API key (not saved)",
+    "tunnel_help": "OpenAI Secure MCP Tunnel: install the official tunnel-client, then supply a distinct Tunnel ID and runtime key for this terminal.",
+    "tunnel_required": "Enter a helper executable, Tunnel ID and runtime key.",
+    "start_helper": "Start tunnel helper",
+    "stop_helper": "Stop tunnel helper",
+    "helper_starting": "Starting helper…",
+    "helper_running": "Helper running — OpenAI connection not verified",
+    "helper_stopped": "Tunnel helper stopped",
+    "helper_failed": "Tunnel helper failed: {error}",
+    "approval_requested": "Remote AI requests approval",
+    "approve": "Approve once"
   }
 }

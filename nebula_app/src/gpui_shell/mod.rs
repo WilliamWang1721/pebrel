@@ -32,6 +32,7 @@ mod file_editor;
 mod file_preview;
 pub mod http;
 pub mod math_view;
+pub(crate) mod mcp;
 mod molecule_view;
 pub mod network_settings;
 pub mod prelude;
@@ -218,6 +219,7 @@ fn init(cx: &mut App) {
     terminal::init(cx);
     workspace::init(cx);
     toast::init(cx);
+    mcp::init(cx);
 }
 
 fn register_bundled_fonts(cx: &App) {

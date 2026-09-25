@@ -725,29 +725,18 @@ impl NebulaWorkspace {
                                     ),
                             )
                             .child(
-                                h_flex()
-                                    .id("sidebar-tabs-menu")
-                                    .w(px(SIDEBAR_MENU_W))
-                                    .h(px(SIDEBAR_PLUS_SIZE))
-                                    .flex_shrink_0()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded_md()
-                                    .cursor_pointer()
-                                    .text_color(muted)
-                                    .hover(|button| button.bg(hover_bg).text_color(theme.foreground))
-                                    .tooltip(|window, cx| {
-                                        gpui_component::tooltip::Tooltip::new("新建终端 (Ctrl+K)")
-                                            .build(window, cx)
+                                Button::new("sidebar-tabs-menu")
+                                    .icon(IconName::EllipsisVertical).ghost().small()
+                                    .w(px(SIDEBAR_MENU_W)).h(px(SIDEBAR_PLUS_SIZE))
+                                    .dropdown_menu({
+                                        let workspace = cx.entity().downgrade();
+                                        move |menu, _, cx| {
+                                            let picker = workspace.clone();
+                                            menu.item(gpui_component::menu::PopupMenuItem::new(crate::gpui_shell::config::ui_language(cx).text(crate::i18n::Message::McpChooseTerminal))
+                                                .on_click(move |_, window, cx| { if let Some(w) = picker.upgrade() { w.update(cx, |w, cx| w.open_shell_palette(window, cx)); } }))
+                                                .item(Self::mcp_menu_item(workspace.clone(), cx))
+                                        }
                                     })
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        cx.stop_propagation();
-                                        this.open_shell_palette(window, cx);
-                                    }))
-                                    .child(
-                                        Icon::new(IconName::EllipsisVertical)
-                                            .with_size(px(SIDEBAR_HEADER_ICON)),
-                                    ),
                             ),
                     ),
             )

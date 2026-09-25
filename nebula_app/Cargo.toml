@@ -70,6 +70,10 @@ path = "../nebula-completions"
 version = "1.9.1"
 
 [dependencies]
+# MCP owns protocol framing; axum owns HTTP routing, not terminal execution.
+rmcp = { version = "=3.4.1", default-features = false, features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session"], optional = true }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"], optional = true }
+tokio-util = { version = "0.7", optional = true }
 ahash = { version = "0.8.6", features = ["no-rng"] }
 ab_glyph_rasterizer = "=0.1.10"
 base64 = "0.22.0"
@@ -290,6 +294,7 @@ nightly = []
 # GPUI UI 层（产品代码在 src/gpui_shell/），也是默认与正式发布 UI。
 # `--gpui` 作为兼容参数保留；旧壳只存在于显式 `legacy-shell` 构建。
 gpui-shell = [
+    "dep:rmcp", "dep:axum", "dep:tokio-util",
     "dep:gpui",
     "dep:gpui_platform",
     "dep:gpui-component",

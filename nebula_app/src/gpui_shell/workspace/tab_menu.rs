@@ -487,3 +487,29 @@ mod tests {
         })));
     }
 }
+
+impl NebulaWorkspace {
+    pub(super) fn mcp_menu_item(workspace: gpui::WeakEntity<Self>, cx: &App) -> PopupMenuItem {
+        let enabled = cx.global::<crate::gpui_shell::config::Settings>().mcp_enabled
+            && workspace.upgrade().is_some_and(|w| {
+                let w = w.read(cx);
+                w.tabs.get(w.active).and_then(WorkspaceTab::focused_view).is_some()
+            });
+        PopupMenuItem::new(
+            crate::gpui_shell::config::ui_language(cx).text(crate::i18n::Message::McpExpose),
+        )
+        .icon(IconName::SquareTerminal)
+        .disabled(!enabled)
+        .on_click(move |_, window, cx| {
+            if let Some(workspace) = workspace.upgrade() {
+                let view = {
+                    let w = workspace.read(cx);
+                    w.tabs.get(w.active).and_then(WorkspaceTab::focused_view).cloned()
+                };
+                if let Some(view) = view {
+                    view.update(cx, |view, cx| view.expose_to_ai(window, cx));
+                }
+            }
+        })
+    }
+}
