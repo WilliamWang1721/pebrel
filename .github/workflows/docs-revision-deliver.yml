@@ -32,7 +32,8 @@ jobs:
           import base64, gzip, hashlib, json, pathlib, subprocess
 
           parts = pathlib.Path('delivery/automation/docs-revision-payload')
-          encoded = ''.join(p.read_text().strip() for p in sorted(parts.glob('*.txt')))
+          names = [f'{i:02d}.txt' for i in range(1, 16)] + ['16a.txt', '16b.txt', '17.txt', '18.txt']
+          encoded = ''.join((parts / name).read_text().strip() for name in names)
           expected = '31ad733ace4c7de430f9bbd9e699cc3fbbb671f43540305115cb1de7797f420a'
           actual = hashlib.sha256(encoded.encode()).hexdigest()
           assert actual == expected, (actual, expected)
