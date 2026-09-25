@@ -1,0 +1,1 @@
+Saved SSH host right-click menu and duplicated-host editor
