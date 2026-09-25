@@ -31,6 +31,8 @@ jobs:
           python - <<'PY'
           import base64, gzip, hashlib, json, pathlib, subprocess
 
+          root = pathlib.Path('project').resolve()
+
           parts = pathlib.Path('delivery/automation/docs-revision-payload')
           names = [f'{i:02d}.txt' for i in range(1, 16)] + ['16a.txt', '16b.txt', '17.txt', '18.txt']
           encoded = ''.join((parts / name).read_text().strip() for name in names)
@@ -39,12 +41,12 @@ jobs:
           assert actual == expected, (actual, expected)
 
           data = json.loads(gzip.decompress(base64.b64decode(encoded, validate=True)))
-          root = pathlib.Path('project').resolve()
           head = subprocess.check_output(
               ['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True
           ).strip()
           assert head == data['expected_parent'], (head, data['expected_parent'])
 
+          files = set(data['files'])
           for name, content in data['files'].items():
               path = (root / name).resolve()
               assert path.is_relative_to(root)
@@ -52,8 +54,51 @@ jobs:
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_text(content, encoding='utf-8')
 
+          extra = pathlib.Path('delivery/automation/docs-revision-extra')
+          extra_encoded = ''.join(
+              (extra / name).read_text().strip()
+              for name in ['text-01.txt', 'text-02.txt']
+          )
+          extra_expected = '7ae566270e47a8b8a39051a4ba53944db38f9fb94c6a58339c5c6fa17b7d3b53'
+          extra_actual = hashlib.sha256(extra_encoded.encode()).hexdigest()
+          assert extra_actual == extra_expected, (extra_actual, extra_expected)
+
+          supplement = json.loads(
+              gzip.decompress(base64.b64decode(extra_encoded, validate=True))
+          )
+          for name, content in supplement.items():
+              path = (root / name).resolve()
+              assert path.is_relative_to(root)
+              assert name.startswith('docs/site/')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content, encoding='utf-8')
+              files.add(name)
+
+          data['files'] = sorted(files)
+          data['message'] = 'docs: rewrite and expand complete user documentation'
           pathlib.Path('revision.json').write_text(json.dumps(data), encoding='utf-8')
-          print(f"Applied {len(data['files'])} files")
+          print(f'Applied {len(files)} text files')
+          PY
+
+      - name: Restore official Pebrel 1.9.1 macOS screenshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence project/docs/screenshots
+          gh api repos/Kuddev/pebrel/actions/artifacts/10792632932/zip > evidence.zip
+          unzip -q evidence.zip -d evidence
+          image=$(find evidence -type f -name installed-app.png -print -quit)
+          test -n "$image"
+          test "$(sha256sum "$image" | cut -d' ' -f1)" = "6f2b2a1b42975020ce53bc37bf85e9529dee97ca12f79f9edfc43825b2d892b9"
+          cp "$image" project/docs/screenshots/pebrel-1.9.1-macos-arm64-ci.png
+          python - <<'PY'
+          import json
+          p = 'revision.json'
+          data = json.load(open(p))
+          data['files'].append('docs/screenshots/pebrel-1.9.1-macos-arm64-ci.png')
+          data['files'] = sorted(set(data['files']))
+          json.dump(data, open(p, 'w'))
           PY
 
       - name: Validate documentation
