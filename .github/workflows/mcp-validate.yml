@@ -1,0 +1,99 @@
+name: Validate local MCP candidate
+on:
+  push:
+    branches: [chore/mcp-source-snapshot-20260925]
+    paths: [.github/workflows/mcp-validate.yml, .github/mcp-local-patch.*.b64, .github/mcp-followup.patch]
+permissions:
+  contents: read
+concurrency:
+  group: mcp-candidate
+  cancel-in-progress: true
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 3
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restore locally authored candidate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, pathlib
+          p = pathlib.Path('.github')
+          data = ''.join((p / f'mcp-local-patch.{i}.b64').read_text().strip() for i in (0, 1))
+          data += (p / 'mcp-local-patch.2.b64').read_text().strip()[:4174]
+          data += (p / 'mcp-local-patch.3.b64').read_text().strip()
+          patch = gzip.decompress(base64.b64decode(data, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == 'c0578e8650aab145d6cd7df0001a6361ff5135ce430e06187aecd1923b2221eb'
+          pathlib.Path('/tmp/mcp.patch').write_bytes(patch)
+          followup = p / 'mcp-followup.patch'
+          if followup.exists():
+              pathlib.Path('/tmp/mcp-followup.patch').write_bytes(followup.read_bytes())
+          PY
+          git checkout --detach 9dc058d12765893553d5fc7a2c37c870c96168b0
+          git apply --index /tmp/mcp.patch
+          if test -f /tmp/mcp-followup.patch; then git apply /tmp/mcp-followup.patch; fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Format and export candidate
+        run: |
+          cargo fmt --all
+          mkdir -p /tmp/mcp-formatted
+          git diff HEAD --binary > /tmp/mcp-formatted/formatted.patch
+          cp "$(rustup which rustfmt)" /tmp/mcp-formatted/rustfmt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-formatted
+          path: /tmp/mcp-formatted/
+          retention-days: 3
+      - name: Linux dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config zsh libasound2-dev libdbus-1-dev libudev-dev libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xinput-dev libxcb-xkb-dev libxi-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mcp-gpui-ci
+          cache-on-failure: true
+      - name: Compile actual GPUI application and tests
+        id: compile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo --config .github/ci-profile.toml check --profile ci -p nebula --bin pebrel --features gpui-shell --tests 2>&1 | tee /tmp/mcp-build.log
+      - name: MCP transport and approval tests
+        if: steps.compile.outcome == 'success'
+        run: |
+          set -o pipefail
+          cargo --config .github/ci-profile.toml test --locked --profile ci -p nebula --bin pebrel --features gpui-shell mcp:: 2>&1 | tee /tmp/mcp-tests.log
+      - name: Settings tests
+        if: steps.compile.outcome == 'success'
+        run: cargo --config .github/ci-profile.toml test --locked --profile ci -p nebula-settings
+      - name: Architecture contracts
+        if: always()
+        run: python3 scripts/check_architecture.py --base 9dc058d12765893553d5fc7a2c37c870c96168b0
+      - name: Export exact candidate and diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/mcp-results
+          git add nebula_app nebula_settings Cargo.lock
+          git diff --cached --binary > /tmp/mcp-results/candidate.patch
+          git diff --cached --stat > /tmp/mcp-results/stat.txt
+          cp Cargo.lock /tmp/mcp-results/
+          cp /tmp/mcp-*.log /tmp/mcp-results/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-validation-results
+          path: /tmp/mcp-results/
+          retention-days: 3
+      - name: Propagate compilation failure
+        if: steps.compile.outcome != 'success'
+        run: exit 1
