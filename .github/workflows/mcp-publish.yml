@@ -1,0 +1,64 @@
+name: Publish local MCP commit
+on:
+  push:
+    branches: [chore/mcp-source-snapshot-20260925]
+    paths: [.github/workflows/mcp-publish.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify completed Linux tests and macOS compilation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/WilliamWang1721/pebrel/actions/jobs/108116988991 --jq '.conclusion' | grep -x success
+          gh api repos/WilliamWang1721/pebrel/actions/jobs/108116988867 --jq '.conclusion' | grep -x success
+      - uses: actions/checkout@v4
+        with:
+          ref: 9dc058d12765893553d5fc7a2c37c870c96168b0
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-validation-Linux
+          run-id: 36148931615
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/validated-mcp
+      - name: Reconstruct and push the unchanged local commit
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, os
+          patch = pathlib.Path(os.environ['RUNNER_TEMP']) / 'validated-mcp/candidate.patch'
+          assert hashlib.sha256(patch.read_bytes()).hexdigest() == '48d42401f91746a167e3be506e7d4c834bbab2065d16fb3da52d1cd789711663'
+          PY
+          git apply --index "$RUNNER_TEMP/validated-mcp/candidate.patch"
+          git diff --cached --check
+          test "$(git write-tree)" = 65550d5e5fad54d49b49d7da9ea4f3a027c1b7fa
+          cat > "$RUNNER_TEMP/local.commit" <<'COMMIT'
+          tree 65550d5e5fad54d49b49d7da9ea4f3a027c1b7fa
+          parent 9dc058d12765893553d5fc7a2c37c870c96168b0
+          author GeekMr <140129782+WilliamWang1721@users.noreply.github.com> 1790347601 +0000
+          committer GeekMr <140129782+WilliamWang1721@users.noreply.github.com> 1790347601 +0000
+
+          feat: share terminal tabs over MCP with local approval
+          COMMIT
+          commit=$(git hash-object -t commit -w --stdin < "$RUNNER_TEMP/local.commit")
+          test "$commit" = 808941c629cf271d48db1ecf2aebf953d063b6dd
+          test -z "$(git diff --name-only HEAD "$commit" -- .github)"
+          git update-ref refs/heads/feat/tab-mcp-secure-tunnel "$commit"
+          git push origin refs/heads/feat/tab-mcp-secure-tunnel:refs/heads/feat/tab-mcp-secure-tunnel
+          {
+            echo "commit=$commit"
+            echo 'branch=feat/tab-mcp-secure-tunnel'
+            echo 'base=9dc058d12765893553d5fc7a2c37c870c96168b0'
+            git diff --stat HEAD "$commit"
+          } | tee "$RUNNER_TEMP/mcp-published.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-published
+          path: ${{ runner.temp }}/mcp-published.txt
+          retention-days: 7
