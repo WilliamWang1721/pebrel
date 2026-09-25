@@ -75,6 +75,9 @@ impl SettingsPane {
                     .update(cx, |input, cx| input.set_value(value.clone(), window, cx));
                 if value != self.runtime.update_release_url {
                     self.persist(&[("update_release_url", value)], cx);
+                    if let Some(asset) = crate::update_download::cached_asset() {
+                        crate::update_download::cancel(&asset);
+                    }
                 }
                 self.about_update = AboutUpdateState::Idle;
                 self.about_last_checked = None;
@@ -99,12 +102,11 @@ impl SettingsPane {
         let danger = theme.danger;
         let base_px = self.font_size_px(cx);
         let cached_update = crate::update_download::cached_asset().filter(|asset| {
-            crate::update_check::validate_asset_url(asset).is_ok()
-                && (crate::update_check::is_newer(&asset.version, env!("CARGO_PKG_VERSION"))
-                    || matches!(
-                        crate::update_download::status(asset),
-                        crate::update_download::DownloadStatus::InstallFailed(_)
-                    ))
+            crate::update_check::is_newer(&asset.version, env!("CARGO_PKG_VERSION"))
+                || matches!(
+                    crate::update_download::status(asset),
+                    crate::update_download::DownloadStatus::InstallFailed(_)
+                )
         });
         let checking = matches!(self.about_update, AboutUpdateState::Checking);
         let (status, status_color): (SharedString, Hsla) = match &self.about_update {
@@ -285,6 +287,11 @@ impl SettingsPane {
                 div().text_color(muted).child(last_checked),
                 cx,
             ));
+        let release_page = if self.runtime.update_release_url.is_empty() {
+            crate::update_check::RELEASES_PAGE.to_owned()
+        } else {
+            self.runtime.update_release_url.clone()
+        };
         let actions = v_flex()
             .flex_1()
             .min_w(px(280.0))
@@ -307,7 +314,7 @@ impl SettingsPane {
                 "about-releases",
                 IconName::BookOpen,
                 language.pick("更新内容", "Release notes"),
-                crate::update_check::release_page(),
+                release_page,
                 cx,
             ))
             .child(Self::about_page_row(
