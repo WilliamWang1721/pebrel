@@ -1,37 +1,20 @@
 # Configurable GitHub Release update source
 
-## Status
-
-Proposed for review; implemented on top of the existing updater.
-
-## Context
-
-Pebrel's updater previously bound discovery and download validation to the
-official `Kuddev/pebrel` stable release. Fork users and prerelease testers could
-not keep the existing in-app check, verified download, and installation handoff
-while selecting their own GitHub Release.
-
 ## Decision
 
-Add one persisted `update_release_url` preference. An empty value preserves the
-existing official stable source. A custom value must be an HTTPS
-`github.com/<owner>/<repo>` release location and is normalized to either that
-repository's Releases page or an explicit `releases/tag/<tag>` page.
+Persist one optional `update_release_url`. Empty keeps the existing
+`Kuddev/pebrel` updater. A custom value must be an HTTPS GitHub Releases URL;
+`releases/tag/<tag>` selects that exact release, while `releases` uses GitHub's
+latest-release API.
 
-Release discovery still uses the existing GitHub API/proxy path. Repository
-release pages select GitHub's latest stable release; an explicit tag selects that
-exact release, including semver-style beta/preview tags. API rate-limit fallback
-stays inside the same selected repository and uses its `SHA256SUMS` asset when
-available.
-
-The custom setting changes only the repository trust boundary. Existing native
-asset-name selection, package size limits, SHA-256 requirements, streamed
-verification, platform installation checks, and handoff remain unchanged. A
-cached package is rejected if it no longer belongs to the currently configured
-source, so cache metadata cannot authorize a different repository by itself.
+Only discovery and the trusted release-download repository become configurable.
+The existing native asset names, size limits, SHA-256 requirement, streamed
+verification and platform installation handoff remain unchanged. The official
+source keeps its existing 403/429 public-page fallback; custom sources return the
+GitHub API error instead of adding a second fallback protocol.
 
 ## Compatibility
 
-Existing settings omit `update_release_url` and therefore keep the official
-behavior. Resetting settings removes the override. The existing version policy
-still prevents downgrades and does not reinterpret same-version prereleases.
+Existing settings omit the key and keep current behavior. Clearing the field
+restores the official source; changing it also prevents cached assets from a
+different repository from passing download validation.
