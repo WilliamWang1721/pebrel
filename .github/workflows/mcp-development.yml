@@ -1,0 +1,20 @@
+name: MCP development
+on:
+  push:
+    branches: [ci/mcp-tab-development-20260925]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9dc058d12765893553d5fc7a2c37c870c96168b0
+      - name: Archive exact upstream source
+        run: git archive --format=zip HEAD -o /tmp/pebrel-source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-source
+          path: /tmp/pebrel-source.zip
+          retention-days: 1
