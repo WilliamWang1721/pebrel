@@ -1445,14 +1445,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
                     mouse.pending_selection = None;
                 },
                 ElementState::Released => {
-                    let click_target = self
-                        .ctx
-                        .mouse()
-                        .pending_selection
-                        .as_ref()
-                        .and_then(|(ty, point, side)| {
+                    let click_target = self.ctx.mouse().pending_selection.as_ref().and_then(
+                        |(ty, point, side)| {
                             matches!(ty, &SelectionType::Simple).then_some((*point, *side))
-                        });
+                        },
+                    );
                     if let Some((point, side)) = click_target
                         && self.ctx.modifiers().state().is_empty()
                         && !self.ctx.search_active()
@@ -1764,11 +1761,7 @@ mod prompt_cursor_tests {
         let mut terminal = Term::new(Default::default(), &size, VoidListener);
         let mut stream = StreamProcessor::default();
 
-        stream.feed(
-            &mut terminal,
-            &VoidListener,
-            b"\x1b]133;A\x07PS> \x1b]133;B\x07abcdef\x1b[2D",
-        );
+        stream.feed(&mut terminal, &VoidListener, b"\x1b]133;A\x07PS> \x1b]133;B\x07abcdef\x1b[2D");
 
         assert_eq!(terminal.nebula_prompt_input_point(), Some(Point::new(Line(0), Column(4))));
         assert_eq!(terminal.grid().cursor.point, Point::new(Line(0), Column(8)));
