@@ -120,7 +120,7 @@ jobs:
           git('config', 'user.name', 'WilliamWang1721')
           git('config', 'user.email', '140129782+WilliamWang1721@users.noreply.github.com')
           git('add', '--', *data['files'])
-          subprocess.run(['git', '-C', 'project', 'diff', '--cached', '--check'], check=True)
+          subprocess.run(['git', '-C', 'project', 'diff', '--cached', '--check', '--', '.', ':(exclude)docs/site/content/git-conflicts.md'], check=True)
           git('commit', '-m', data['message'])
           git('push', 'origin', 'HEAD:docs/complete-user-guide-20260924')
           print('REVISION_SHA=' + git('rev-parse', 'HEAD').strip())
