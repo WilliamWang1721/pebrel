@@ -22,6 +22,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+          components: rustfmt
+      - name: Format changed Rust files
+        run: >-
+          rustfmt --edition 2024 --config skip_children=true --check
+          nebula_settings/src/lib.rs
+          nebula_settings/src/reset.rs
+          nebula_app/src/platform/capabilities.rs
+          nebula_app/src/gpui_shell/config.rs
+          nebula_app/src/gpui_shell/workspace/notifications.rs
+          nebula_app/src/gpui_shell/settings_pane.rs
+          nebula_app/src/gpui_shell/settings_pane/setting_help.rs
+          nebula_app/src/gpui_shell/settings_pane/navigation.rs
       - run: python3 scripts/check_architecture.py --base 9dc058d12765893553d5fc7a2c37c870c96168b0
       - run: python3 -m unittest scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance scripts.tests.test_prohibited_names
 
@@ -37,18 +52,6 @@ jobs:
           toolchain: "1.97.1"
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Format changed Rust files
-        shell: pwsh
-        run: |
-          rustfmt --edition 2024 --config skip_children=true --check `
-            nebula_settings/src/lib.rs `
-            nebula_settings/src/reset.rs `
-            nebula_app/src/platform/capabilities.rs `
-            nebula_app/src/gpui_shell/config.rs `
-            nebula_app/src/gpui_shell/workspace/notifications.rs `
-            nebula_app/src/gpui_shell/settings_pane.rs `
-            nebula_app/src/gpui_shell/settings_pane/setting_help.rs `
-            nebula_app/src/gpui_shell/settings_pane/navigation.rs
       - name: Settings tests
         run: cargo test --locked -p nebula-settings system_notifications -- --nocapture
       - name: Notification route regression
