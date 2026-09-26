@@ -18,50 +18,55 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: control
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
           repository: WilliamWang1721/pebrel
-          ref: 33e7b1d00d5728e96b745eaa3d8a21feb97a1669
-          path: source
+          ref: fix/windows-ctrl-slash
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.97.1'
           components: rustfmt
-      - name: Apply the reviewed sandbox patch
-        working-directory: source
+      - name: Update the isolated feature branch from upstream
         run: |
-          git apply --check ../control/tmp/issue-295.patch
-          git apply ../control/tmp/issue-295.patch
-          cargo fmt --all
-          cargo fmt --all -- --check
-          git diff --check
-          python3 scripts/check_architecture.py --base HEAD
-          python3 scripts/check_platform_cfg.py
-          python3 - <<'PY'
-          import subprocess
-          paths = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
-          assert paths == ['nebula_app/src/gpui_shell/terminal/keymap.rs', 'nebula_app/src/gpui_shell/terminal/keymap/win32.rs'], paths
-          PY
-      - name: Preserve the exact validation candidate
-        id: commit
-        working-directory: source
-        run: |
-          git diff --binary > "$RUNNER_TEMP/issue-295.patch"
+          test "$(git rev-parse HEAD)" = c5622dcff163fa7e9f729590caaa372fbdc8568e
+          git fetch https://github.com/Kuddev/pebrel.git main
+          git rev-parse FETCH_HEAD | tee "$RUNNER_TEMP/upstream-sha.txt"
           git config user.name WilliamWang1721
           git config user.email 140129782+WilliamWang1721@users.noreply.github.com
-          git add nebula_app/src/gpui_shell/terminal/keymap.rs nebula_app/src/gpui_shell/terminal/keymap/win32.rs
-          git -c commit.gpgsign=false commit -m 'fix(windows): preserve Ctrl+/ in ConPTY input records'
-          git push origin "HEAD:refs/heads/automation/issue-295-candidate-${GITHUB_RUN_ID}"
+          git -c commit.gpgsign=false merge --no-edit FETCH_HEAD
+      - name: Revalidate scope and repository constraints
+        run: |
+          base=$(cat "$RUNNER_TEMP/upstream-sha.txt")
+          cargo fmt --all -- --check
+          git diff --check "$base"
+          python3 scripts/check_architecture.py --base "$base"
+          python3 scripts/check_platform_cfg.py
+          python3 -m unittest scripts.tests.test_platform_cfg scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_prohibited_names -q
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          base = (Path(os.environ['RUNNER_TEMP']) / 'upstream-sha.txt').read_text().strip()
+          paths = subprocess.check_output(['git', 'diff', '--name-only', base], text=True).splitlines()
+          assert paths == ['nebula_app/src/gpui_shell/terminal/keymap.rs', 'nebula_app/src/gpui_shell/terminal/keymap/win32.rs'], paths
+          assert subprocess.check_output(['git', 'diff', 'c5622dcff163fa7e9f729590caaa372fbdc8568e', '--', *paths]) == b''
+          PY
+      - name: Push the updated feature branch
+        id: commit
+        run: |
+          base=$(cat "$RUNNER_TEMP/upstream-sha.txt")
+          git diff --binary "$base" > "$RUNNER_TEMP/issue-295.patch"
+          git push origin HEAD:refs/heads/fix/windows-ctrl-slash
           git rev-parse HEAD | tee "$RUNNER_TEMP/candidate-sha.txt"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git archive --format=zip --output="$RUNNER_TEMP/pebrel-source.zip" HEAD
       - uses: actions/upload-artifact@v4
         with:
           name: issue-295-candidate
           path: |
             ${{ runner.temp }}/issue-295.patch
             ${{ runner.temp }}/candidate-sha.txt
+            ${{ runner.temp }}/upstream-sha.txt
+            ${{ runner.temp }}/pebrel-source.zip
           retention-days: 7
   windows:
     needs: prepare
