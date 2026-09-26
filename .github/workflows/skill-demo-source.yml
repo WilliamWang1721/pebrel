@@ -31,3 +31,24 @@ jobs:
           name: pebrel-source-83f7246
           path: pebrel-source.zip
           if-no-files-found: error
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c373422100bce0adcb6ac6a618934e51b096b72b
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+          components: rustfmt
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Architecture
+        run: python3 scripts/check_architecture.py --base acea926f913770a6cadfe6c29af8f13d484f42ba
