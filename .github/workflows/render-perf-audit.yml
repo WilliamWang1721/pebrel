@@ -1,0 +1,31 @@
+name: Render performance audit
+on:
+  push:
+    branches: [ci/render-perf-audit-20260926]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: ba31b0d9c3225758121588068ba763bbf46ccb71
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact upstream tree and history
+        run: |
+          mkdir -p /tmp/pebrel-render-audit
+          git archive --format=zip HEAD -o /tmp/pebrel-render-audit/source.zip
+          git branch audit-base HEAD
+          git bundle create /tmp/pebrel-render-audit/source.bundle audit-base
+          git rev-parse HEAD HEAD^{tree} > /tmp/pebrel-render-audit/identity.txt
+          sha256sum /tmp/pebrel-render-audit/source.zip /tmp/pebrel-render-audit/source.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pebrel-render-audit-source
+          path: /tmp/pebrel-render-audit
+          retention-days: 3
+          if-no-files-found: error
