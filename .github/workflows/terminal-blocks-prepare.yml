@@ -1,0 +1,28 @@
+name: Prepare terminal blocks source
+on:
+  push:
+    branches: [automation/terminal-blocks-prepare]
+    paths: [.github/workflows/terminal-blocks-prepare.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: ba31b0d9c3225758121588068ba763bbf46ccb71
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bundle the verified upstream history
+        run: |
+          test "$(git rev-parse HEAD)" = ba31b0d9c3225758121588068ba763bbf46ccb71
+          git bundle create "$RUNNER_TEMP/pebrel-upstream.bundle" HEAD
+          git bundle verify "$RUNNER_TEMP/pebrel-upstream.bundle"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terminal-blocks-upstream
+          path: ${{ runner.temp }}/pebrel-upstream.bundle
+          retention-days: 1
+          compression-level: 0
