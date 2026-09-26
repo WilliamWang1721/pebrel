@@ -2,30 +2,87 @@ name: Issue 270 investigation
 on:
   push:
     branches: [automation/issue-270-validation]
-    paths: [.github/workflows/issue-270-validation.yml]
+    paths: [.github/workflows/issue-270-validation.yml, .github/issue-270-probe.rs]
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
-  source:
-    runs-on: ubuntu-latest
+  keyboard-and-ssh:
+    name: Keyboard and SSH (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: '1'
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: '1'
+      RUST_TOOLCHAIN: '1.97.1'
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Kuddev/pebrel
-          ref: main
           fetch-depth: 0
-          submodules: recursive
-      - name: Export complete upstream source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config zsh libasound2-dev libdbus-1-dev libudev-dev libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xinput-dev libxcb-xkb-dev libxi-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          extra-key: -release-check-v2
+          target: |
+            target/ci
+            target/release
+          legacy-key: ${{ runner.os == 'Windows' && 'windows' || 'linux' }}
+      - name: Prepare pinned Windows console runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture x64
+      - name: Apply investigation-only probes
+        shell: python
+        run: |
+          from pathlib import Path
+          tests = Path('nebula_app/src/gpui_shell/terminal/view/pointer/tests.rs')
+          tests.write_text(tests.read_text(encoding='utf-8') + '\n' + Path('.github/issue-270-probe.rs').read_text(encoding='utf-8'), encoding='utf-8')
+          transport = Path('nebula_app/src/ssh_session/lifecycle/tests.rs')
+          source = transport.read_text(encoding='utf-8')
+          old = r'let keys = b"\x1b[A\x1b[B\x03\x1a";'
+          assert source.count(old) == 1
+          transport.write_text(source.replace(old, r'let keys = b"\t\x0c\x1b[A\x1b[B\x03\x1a";'), encoding='utf-8')
+      - name: Test real-layout SSH key dispatch
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/issue-270-source"
-          git rev-parse HEAD > "$RUNNER_TEMP/issue-270-source/UPSTREAM_SHA.txt"
-          git archive --format=zip --prefix=pebrel/ HEAD > "$RUNNER_TEMP/issue-270-source/pebrel-main.zip"
-          git bundle create "$RUNNER_TEMP/issue-270-source/pebrel-main.bundle" HEAD
-          git submodule status --recursive > "$RUNNER_TEMP/issue-270-source/SUBMODULES.txt"
-      - uses: actions/upload-artifact@v4
+          set -o pipefail
+          mkdir -p issue-270-evidence
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-test-support issue_270 -- --nocapture 2>&1 | tee issue-270-evidence/keyboard.log
+      - name: Test keyboard encoding and SSH lifecycle
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-test-support gpui_shell::terminal::keymap -- --nocapture 2>&1 | tee issue-270-evidence/keymap.log
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-test-support ssh_session::lifecycle::tests -- --nocapture 2>&1 | tee issue-270-evidence/ssh.log
+      - name: Test full workspace and native harness
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/ci_native_tests.py 2>&1 | tee issue-270-evidence/workspace.log
+      - name: Preserve probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: issue-270-upstream-source
-          path: ${{ runner.temp }}/issue-270-source/
+          name: issue-270-evidence-${{ matrix.os }}
+          path: issue-270-evidence/
+          if-no-files-found: warn
           retention-days: 7
