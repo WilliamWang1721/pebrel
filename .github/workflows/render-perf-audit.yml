@@ -5,27 +5,82 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  measure-and-publish:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write
+    env:
+      BASE: ba31b0d9c3225758121588068ba763bbf46ccb71
+      EXPECTED_TREE: 2fcd67be1b9f6ecf3a8fe393de3b09eba97c8c4d
+      BRANCH: perf/render-snapshot-text
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Kuddev/pebrel
-          ref: ba31b0d9c3225758121588068ba763bbf46ccb71
           fetch-depth: 0
-          persist-credentials: false
-      - name: Export exact upstream tree and history
-        run: |
-          mkdir -p /tmp/pebrel-render-audit
-          git archive --format=zip HEAD -o /tmp/pebrel-render-audit/source.zip
-          git branch audit-base HEAD
-          git bundle create /tmp/pebrel-render-audit/source.bundle audit-base
-          git rev-parse HEAD HEAD^{tree} > /tmp/pebrel-render-audit/identity.txt
-          sha256sum /tmp/pebrel-render-audit/source.zip /tmp/pebrel-render-audit/source.bundle
-      - uses: actions/upload-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          name: pebrel-render-audit-source
-          path: /tmp/pebrel-render-audit
-          retention-days: 3
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Prepare isolated before and after worktrees
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/before" "$BASE"
+          git worktree add -b "$BRANCH" "$RUNNER_TEMP/after" "$BASE"
+          git -C "$RUNNER_TEMP/after" apply "$GITHUB_WORKSPACE/tmp/render-text.patch"
+          git -C "$RUNNER_TEMP/after" add nebula_app/src/gpui_shell/terminal/element.rs
+          test "$(git -C "$RUNNER_TEMP/after" write-tree)" = "$EXPECTED_TREE"
+          mkdir -p "$RUNNER_TEMP/evidence"
+          cp tmp/render-text-probe.py tmp/render-text.patch "$RUNNER_TEMP/evidence/"
+          rustc -vV > "$RUNNER_TEMP/evidence/rustc.txt"
+          lscpu > "$RUNNER_TEMP/evidence/cpu.txt"
+          git -C "$RUNNER_TEMP/after" diff --cached > "$RUNNER_TEMP/evidence/product.diff"
+          printf '%s\n%s\n' "$BASE" "$EXPECTED_TREE" > "$RUNNER_TEMP/evidence/identity.txt"
+      - name: Check formatting and repository contracts
+        working-directory: ${{ runner.temp }}/after
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          git diff --cached --check
+          python3 scripts/check_architecture.py --base "$BASE" | tee "$RUNNER_TEMP/evidence/architecture.txt"
+          python3 -m unittest scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance scripts.tests.test_ci_plan scripts.tests.test_ci_native_tests 2>&1 | tee "$RUNNER_TEMP/evidence/python-tests.txt"
+      - name: Generate probe from exact production source
+        run: python3 tmp/render-text-probe.py "$RUNNER_TEMP/before" "$RUNNER_TEMP/after" "$RUNNER_TEMP/evidence/probe"
+      - name: Allocation and Unicode regression checks
+        working-directory: ${{ runner.temp }}/evidence/probe
+        run: |
+          set -euo pipefail
+          cargo run --release --features count-alloc 2>&1 | tee ../allocations.txt
+      - name: Alternating A-B timings without allocator instrumentation
+        working-directory: ${{ runner.temp }}/evidence/probe
+        run: |
+          set -euo pipefail
+          cargo run --release --locked 2>&1 | tee ../timings.txt
+      - name: Publish only the validated product tree
+        working-directory: ${{ runner.temp }}/after
+        run: |
+          set -euo pipefail
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          git -c user.name=WilliamWang1721 -c user.email=140129782+WilliamWang1721@users.noreply.github.com commit -m 'perf(terminal): avoid temporary strings in cell painting'
+          git push origin "HEAD:refs/heads/$BRANCH"
+          git rev-parse HEAD >> "$RUNNER_TEMP/evidence/identity.txt"
+          git bundle create "$RUNNER_TEMP/evidence/product.bundle" "$BRANCH" "^$BASE"
+      - name: Dispatch unchanged native and architecture workflows on the feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run architecture.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          gh workflow run linux-lua.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+      - name: Remove build outputs from evidence archive
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/evidence/probe/target"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terminal-text-performance-evidence
+          path: ${{ runner.temp }}/evidence
+          retention-days: 14
           if-no-files-found: error
