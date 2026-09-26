@@ -9,23 +9,101 @@ permissions:
   contents: read
 
 jobs:
-  source:
-    runs-on: ubuntu-latest
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Kuddev/pebrel
-          ref: main
+          path: control
           persist-credentials: false
-      - name: Archive full upstream source
-        shell: bash
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: 33e7b1d00d5728e96b745eaa3d8a21feb97a1669
+          path: source
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Apply the reviewed sandbox patch
+        working-directory: source
         run: |
-          git rev-parse HEAD | tee "$RUNNER_TEMP/upstream-sha.txt"
-          git archive --format=zip --output="$RUNNER_TEMP/pebrel-source.zip" HEAD
+          git apply --check ../control/tmp/issue-295.patch
+          git apply ../control/tmp/issue-295.patch
+          cargo fmt --all
+          cargo fmt --all -- --check
+          git diff --check
+          python3 scripts/check_architecture.py --base HEAD
+          python3 scripts/check_platform_cfg.py
+          python3 - <<'PY'
+          import subprocess
+          paths = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          assert paths == ['nebula_app/src/gpui_shell/terminal/keymap.rs', 'nebula_app/src/gpui_shell/terminal/keymap/win32.rs'], paths
+          PY
+      - name: Preserve the exact validation candidate
+        id: commit
+        working-directory: source
+        run: |
+          git diff --binary > "$RUNNER_TEMP/issue-295.patch"
+          git config user.name WilliamWang1721
+          git config user.email 140129782+WilliamWang1721@users.noreply.github.com
+          git add nebula_app/src/gpui_shell/terminal/keymap.rs nebula_app/src/gpui_shell/terminal/keymap/win32.rs
+          git -c commit.gpgsign=false commit -m 'fix(windows): preserve Ctrl+/ in ConPTY input records'
+          git push origin "HEAD:refs/heads/automation/issue-295-candidate-${GITHUB_RUN_ID}"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/candidate-sha.txt"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: issue-295-upstream-source
+          name: issue-295-candidate
           path: |
-            ${{ runner.temp }}/pebrel-source.zip
-            ${{ runner.temp }}/upstream-sha.txt
+            ${{ runner.temp }}/issue-295.patch
+            ${{ runner.temp }}/candidate-sha.txt
+          retention-days: 7
+  windows:
+    needs: prepare
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: '1'
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          target: target/ci
+          extra-key: '-release-check-v2'
+          revision: dependencies-v1
+          save-if: 'false'
+      - name: Prepare the pinned Windows console runtime
+        shell: pwsh
+        run: |
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture x64
+          ./scripts/tests/windows-runtime.tests.ps1 -Architecture x64
+      - name: Run the real GPUI terminal keymap tests
+        shell: pwsh
+        run: |
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --bin pebrel --features gpui-test-support gpui_shell::terminal::keymap::tests -- --nocapture 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/keymap-tests.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-295-windows-tests
+          path: ${{ runner.temp }}/keymap-tests.log
+          if-no-files-found: warn
           retention-days: 7
