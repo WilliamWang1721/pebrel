@@ -395,6 +395,7 @@ pub(crate) fn open_update_dialog(
         footer = footer.child(DialogAction::new().child(primary));
 
         center_modal_dialog(dialog, window, estimated_height)
+            .bg(crate::gpui_shell::theme::settings_panel_bg(cx))
             .close_button(true)
             // 保留新 Dialog 的遮罩点击取消；它与 Esc、取消按钮共用 on_cancel。
             .overlay_closable(true)
