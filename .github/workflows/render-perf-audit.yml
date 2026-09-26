@@ -5,82 +5,85 @@ on:
 permissions:
   contents: read
 jobs:
-  measure-and-publish:
+  native-preparation-probe:
     if: github.repository == 'WilliamWang1721/pebrel'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: write
-      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, windows-11-arm, macos-26, macos-26-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     env:
       BASE: ba31b0d9c3225758121588068ba763bbf46ccb71
+      HEAD: 5a57751b6931a86c406f3ee58fe55d6bb5b70b60
       EXPECTED_TREE: 2fcd67be1b9f6ecf3a8fe393de3b09eba97c8c4d
-      BRANCH: perf/render-snapshot-text
+      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.97.1'
-          components: rustfmt
-      - name: Prepare isolated before and after worktrees
+      - name: Extract exact committed source and add no-output edge workloads
         run: |
           set -euo pipefail
           git worktree add --detach "$RUNNER_TEMP/before" "$BASE"
-          git worktree add -b "$BRANCH" "$RUNNER_TEMP/after" "$BASE"
-          git -C "$RUNNER_TEMP/after" apply "$GITHUB_WORKSPACE/tmp/render-text.patch"
-          git -C "$RUNNER_TEMP/after" add nebula_app/src/gpui_shell/terminal/element.rs
-          test "$(git -C "$RUNNER_TEMP/after" write-tree)" = "$EXPECTED_TREE"
+          git worktree add --detach "$RUNNER_TEMP/after" "$HEAD"
+          test "$(git -C "$RUNNER_TEMP/after" rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
           mkdir -p "$RUNNER_TEMP/evidence"
-          cp tmp/render-text-probe.py tmp/render-text.patch "$RUNNER_TEMP/evidence/"
           rustc -vV > "$RUNNER_TEMP/evidence/rustc.txt"
-          lscpu > "$RUNNER_TEMP/evidence/cpu.txt"
-          git -C "$RUNNER_TEMP/after" diff --cached > "$RUNNER_TEMP/evidence/product.diff"
-          printf '%s\n%s\n' "$BASE" "$EXPECTED_TREE" > "$RUNNER_TEMP/evidence/identity.txt"
-      - name: Check formatting and repository contracts
-        working-directory: ${{ runner.temp }}/after
-        run: |
-          set -euo pipefail
-          cargo fmt --all -- --check
-          git diff --cached --check
-          python3 scripts/check_architecture.py --base "$BASE" | tee "$RUNNER_TEMP/evidence/architecture.txt"
-          python3 -m unittest scripts.tests.test_architecture_budgets scripts.tests.test_architecture_dependencies scripts.tests.test_architecture_governance scripts.tests.test_ci_plan scripts.tests.test_ci_native_tests 2>&1 | tee "$RUNNER_TEMP/evidence/python-tests.txt"
-      - name: Generate probe from exact production source
-        run: python3 tmp/render-text-probe.py "$RUNNER_TEMP/before" "$RUNNER_TEMP/after" "$RUNNER_TEMP/evidence/probe"
-      - name: Allocation and Unicode regression checks
+          python -c 'import platform; print(platform.platform()); print(platform.machine()); print(platform.processor())' > "$RUNNER_TEMP/evidence/platform.txt"
+          python tmp/render-text-probe.py "$RUNNER_TEMP/before" "$RUNNER_TEMP/after" "$RUNNER_TEMP/evidence/probe"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'evidence/probe/src/main.rs'
+          text = path.read_text()
+          extension = r'''
+              #[cfg(not(feature = "count-alloc"))]
+              for (name, text, limit) in [
+                  ("empty", String::new(), 80),
+                  ("clip-zero", "abc中文".to_owned(), 0),
+                  ("zero-width", "\u{301}\u{200d}\u{200b}".repeat(12), 80),
+                  ("mixed-combining", "a\u{301}".repeat(24), 80),
+                  ("spaces", " ".repeat(64), 80),
+              ] {
+                  check_grid(&text, limit);
+                  let mut a = Window::new(false); let mut b = Window::new(false);
+                  bench(&name,
+                      || { black_box(grid(before_grid, black_box(&text), limit, &mut a)); },
+                      || { black_box(grid(after_grid, black_box(&text), limit, &mut b)); });
+              }
+          '''
+          pos = text.rfind('\n}')
+          assert pos != -1
+          path.write_text(text[:pos] + extension + text[pos:])
+          PY
+      - name: Validate allocations and Unicode equivalence
         working-directory: ${{ runner.temp }}/evidence/probe
         run: |
           set -euo pipefail
           cargo run --release --features count-alloc 2>&1 | tee ../allocations.txt
-      - name: Alternating A-B timings without allocator instrumentation
+      - name: Measure preparation and no-output paths without the counting allocator
         working-directory: ${{ runner.temp }}/evidence/probe
         run: |
           set -euo pipefail
           cargo run --release --locked 2>&1 | tee ../timings.txt
-      - name: Publish only the validated product tree
-        working-directory: ${{ runner.temp }}/after
-        run: |
-          set -euo pipefail
-          test "$(git write-tree)" = "$EXPECTED_TREE"
-          git -c user.name=WilliamWang1721 -c user.email=140129782+WilliamWang1721@users.noreply.github.com commit -m 'perf(terminal): avoid temporary strings in cell painting'
-          git push origin "HEAD:refs/heads/$BRANCH"
-          git rev-parse HEAD >> "$RUNNER_TEMP/evidence/identity.txt"
-          git bundle create "$RUNNER_TEMP/evidence/product.bundle" "$BRANCH" "^$BASE"
-      - name: Dispatch unchanged native and architecture workflows on the feature branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh workflow run architecture.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-          gh workflow run linux-lua.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-      - name: Remove build outputs from evidence archive
+      - name: Remove build artifacts from evidence
         if: always()
         run: rm -rf "$RUNNER_TEMP/evidence/probe/target"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: terminal-text-performance-evidence
+          name: text-preparation-${{ matrix.os }}
           path: ${{ runner.temp }}/evidence
           retention-days: 14
           if-no-files-found: error
