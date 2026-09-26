@@ -6,23 +6,31 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
-    runs-on: ubuntu-latest
+  offline-core:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           repository: Kuddev/pebrel
           ref: ba31b0d9c3225758121588068ba763bbf46ccb71
-          fetch-depth: 0
           persist-credentials: false
-      - name: Bundle the verified upstream history
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Prepare offline compiler and core dependencies
+        shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = ba31b0d9c3225758121588068ba763bbf46ccb71
-          git bundle create "$RUNNER_TEMP/pebrel-upstream.bundle" HEAD
-          git bundle verify "$RUNNER_TEMP/pebrel-upstream.bundle"
+          mkdir -p "$RUNNER_TEMP/offline/core" "$RUNNER_TEMP/offline/tools"
+          cp -r nebula_terminal/* "$RUNNER_TEMP/offline/core/"
+          sed -i 's/edition.workspace = true/edition = "2024"/; s/rust-version.workspace = true/rust-version = "1.97"/' "$RUNNER_TEMP/offline/core/Cargo.toml"
+          cargo vendor --manifest-path "$RUNNER_TEMP/offline/core/Cargo.toml" --versioned-dirs "$RUNNER_TEMP/offline/vendor" > "$RUNNER_TEMP/offline/cargo-config.toml"
+          cp -a "$HOME/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin" "$RUNNER_TEMP/offline/tools/"
+          cp -a "$HOME/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/lib" "$RUNNER_TEMP/offline/tools/"
+          tar -C "$RUNNER_TEMP/offline" -czf "$RUNNER_TEMP/offline-core.tar.gz" .
       - uses: actions/upload-artifact@v4
         with:
-          name: terminal-blocks-upstream
-          path: ${{ runner.temp }}/pebrel-upstream.bundle
+          name: terminal-blocks-offline-tools
+          path: ${{ runner.temp }}/offline-core.tar.gz
           retention-days: 1
           compression-level: 0
