@@ -681,7 +681,7 @@ impl Element for TerminalElement {
                     paint_cell_text(
                         window,
                         cx,
-                        SharedString::from(cell.text.clone()),
+                        SharedString::from(&cell.text),
                         run,
                         font_size,
                         origin,
@@ -1059,7 +1059,7 @@ fn paint_cell_text(
 /// 字符单独塑形、从 `起始格 + 已用格数` 的整数 cell 原点起笔，超出
 /// `max_cells` 截断。绝不批量 `force_width`——其 1px 容差会沿字符累积并在
 /// 重塑形时翻转吸附，删除 `bypassPermission` 一类提示时就会逐字向左挤。
-/// 单字符行命中 GPUI 行缓存，逐字塑形没有额外热路径成本。
+/// 单字符行复用 GPUI 行缓存；直接借用 UTF-8 子串，避免逐字创建临时 String。
 #[allow(clippy::too_many_arguments)]
 fn grid_text(
     window: &mut Window,
@@ -1076,7 +1076,7 @@ fn grid_text(
     use unicode_width::UnicodeWidthChar as _;
 
     let mut used = 0usize;
-    for character in text.chars() {
+    for (offset, character) in text.char_indices() {
         // 与旧壳 draw_string 一致：零宽字符不单占格，宽字符占两格。
         let width = character.width().unwrap_or(0);
         if width == 0 {
@@ -1085,7 +1085,7 @@ fn grid_text(
         if used + width > max_cells {
             break;
         }
-        let text = character.to_string();
+        let text = &text[offset..offset + character.len_utf8()];
         let run = TextRun {
             len: text.len(),
             font: font.clone(),
