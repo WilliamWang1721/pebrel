@@ -25,6 +25,16 @@ jobs:
           python-version: '3.13'
       - name: Prepare Pebrel's pinned console host
         run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture x64
+      - name: Select principal key events, not modifier transitions
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('control/tmp/issue-295-conpty.py')
+          source = path.read_text()
+          original = 'if event.type == 1 and event.body.key.down:'
+          assert source.count(original) == 1
+          source = source.replace(original, 'if event.type == 1 and event.body.key.down and event.body.key.vk not in (16, 17, 18):')
+          path.write_text(source)
       - name: Verify the native key and legacy byte consumers
         shell: pwsh
         run: |
