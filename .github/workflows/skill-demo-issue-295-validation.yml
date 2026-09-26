@@ -3,7 +3,7 @@ name: Issue 295 Windows validation
 on:
   push:
     branches:
-      - skill-demo/issue-295-source
+      - skill-demo/issue-295-windows-disabled
 
 permissions:
   contents: read
