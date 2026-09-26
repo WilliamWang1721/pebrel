@@ -628,6 +628,25 @@ mod tests {
         assert!(win32::win32_input_record(&keystroke("up"), true).is_some());
     }
 
+    /// Ctrl+/ 在 Win32 input mode 下保留 OEM_2 与 C0 `0x1f`；裸 `/` 仍走文本输入。
+    #[cfg(windows)]
+    #[test]
+    fn ctrl_slash_keeps_oem_2_identity_in_win32_mode() {
+        let mode = TermMode::WIN32_INPUT_MODE;
+        assert_eq!(encode(&keystroke("/"), &mode), None);
+
+        let mut key = keystroke("/");
+        key.modifiers.control = true;
+        let text = String::from_utf8(encode(&key, &mode).unwrap()).unwrap();
+        let records: Vec<_> = text.split('_').filter(|record| !record.is_empty()).collect();
+
+        assert_eq!(records.len(), 2);
+        assert!(records[0].starts_with("\\x1b[191;"), "VK_OEM_2: {text:?}");
+        assert!(records[0].ends_with(";31;1;8;1"), "Ctrl+/ key down: {text:?}");
+        assert!(records[1].starts_with("\\x1b[191;"), "VK_OEM_2: {text:?}");
+        assert!(records[1].ends_with(";31;0;8;1"), "Ctrl+/ key up: {text:?}");
+    }
+
     /// 9001 记录路径与真实控制台同构：Ctrl+Backspace 的记录 Uc=DEL（0x7f），
     /// 与旧壳 winit 期一致（`ctrl_space_and_ctrl_backspace_report_real_key_event_chars`）。
     /// PSReadLine 原生绑定 Ctrl+Backspace=BackwardKillWord 按 0x7f 命中。

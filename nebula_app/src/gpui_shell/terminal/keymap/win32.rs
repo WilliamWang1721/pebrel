@@ -2,7 +2,7 @@
 
 use gpui::Keystroke;
 
-/// 无修饰的字母/数字/空格必须交给 IME / `TranslateMessage`，不能编进 PTY。
+/// 无修饰的文本键必须交给 IME / `TranslateMessage`，不能编进 PTY。
 ///
 /// GPUI 的 Windows 后端：`on_key_down` 一旦 `stop_propagation`，就不会再
 /// `TranslateMessage`。IME 组字（微软拼音）是 TranslateMessage 喂进去的；
@@ -13,7 +13,7 @@ pub(super) fn win32_encodes_keystroke(ks: &Keystroke) -> bool {
         return true;
     }
     let key = ks.key.as_str();
-    if key == "space" {
+    if key == "space" || key == "/" {
         return false;
     }
     let mut chars = key.chars();
@@ -27,11 +27,12 @@ pub(super) fn win32_encodes_keystroke(ks: &Keystroke) -> bool {
 ///
 /// 旧壳从 winit fork 的 `RawKeyEventInfo` 直接拿到系统报的 VK；GPUI 的
 /// `Keystroke` 只有键名，所以这里按名字反查。表只覆盖**编码器会处理的键**
-/// （控制键、方向、功能键）——可打印字符在 GPUI 走 IME 管道，不经这里。
+/// （控制键、方向、功能键和带修饰时需要保留物理身份的符号）；无修饰可打印
+/// 字符仍由 GPUI 的 IME / 文本管道处理。
 pub(super) fn virtual_key_of(key: &str) -> Option<u16> {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_HOME, VK_INSERT, VK_LEFT,
-        VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
+        VK_NEXT, VK_OEM_2, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
     };
 
     let vk = match key {
@@ -50,6 +51,7 @@ pub(super) fn virtual_key_of(key: &str) -> Option<u16> {
         "delete" => VK_DELETE,
         "pageup" => VK_PRIOR,
         "pagedown" => VK_NEXT,
+        "/" => VK_OEM_2,
         // F1..F24 在 VK 表里连号。
         key if key.starts_with('f') => {
             let index: u16 = key[1..].parse().ok()?;
@@ -76,6 +78,14 @@ pub(super) fn virtual_key_of(key: &str) -> Option<u16> {
 /// 的 VK_ESCAPE，于是读字节流的那类应用（Claude Code）收不到 Esc。修饰键与
 /// 功能键保持 0，与真实键盘一致。逐条同旧壳 `control_char_fallback`。
 fn unicode_char_of(ks: &Keystroke, scan_code: u32) -> u16 {
+    if ks.key == "/"
+        && ks.modifiers.control
+        && !ks.modifiers.shift
+        && !ks.modifiers.alt
+        && !ks.modifiers.platform
+    {
+        return u16::from(super::ctrl_char('/').expect("Ctrl+/ has a C0 mapping"));
+    }
     // 平台已经判出文本的（含 Ctrl 变体）以它为准，与 WM_CHAR 语义一致。
     // `key_char` 若是 NUL，当作没文本：真实键盘的 Esc 不会写出 U+0000。
     if let Some(text) = ks.key_char.as_deref() {
