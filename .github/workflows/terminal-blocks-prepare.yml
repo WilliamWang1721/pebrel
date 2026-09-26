@@ -1,36 +1,140 @@
-name: Prepare terminal blocks source
+name: Terminal blocks validation
 on:
   push:
     branches: [automation/terminal-blocks-prepare]
     paths: [.github/workflows/terminal-blocks-prepare.yml]
 permissions:
   contents: read
+concurrency:
+  group: terminal-blocks-isolated-validation
+  cancel-in-progress: true
 jobs:
-  offline-core:
+  publish:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      head: ${{ steps.publish.outputs.head }}
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Kuddev/pebrel
-          ref: ba31b0d9c3225758121588068ba763bbf46ccb71
-          persist-credentials: false
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.97.1'
           components: rustfmt
-      - name: Prepare offline compiler and core dependencies
+      - name: Apply verified patch in a fresh upstream worktree
+        id: publish
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/offline/core" "$RUNNER_TEMP/offline/tools"
-          cp -r nebula_terminal/* "$RUNNER_TEMP/offline/core/"
-          sed -i 's/edition.workspace = true/edition = "2024"/; s/rust-version.workspace = true/rust-version = "1.97"/' "$RUNNER_TEMP/offline/core/Cargo.toml"
-          cargo vendor --manifest-path "$RUNNER_TEMP/offline/core/Cargo.toml" --versioned-dirs "$RUNNER_TEMP/offline/vendor" > "$RUNNER_TEMP/offline/cargo-config.toml"
-          cp -a "$HOME/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin" "$RUNNER_TEMP/offline/tools/"
-          cp -a "$HOME/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/lib" "$RUNNER_TEMP/offline/tools/"
-          tar -C "$RUNNER_TEMP/offline" -czf "$RUNNER_TEMP/offline-core.tar.gz" .
+          set -euo pipefail
+          BASE=ba31b0d9c3225758121588068ba763bbf46ccb71
+          git fetch https://github.com/Kuddev/pebrel.git "$BASE"
+          python3 - <<'PY'
+          import base64, gzip, hashlib, os
+          from pathlib import Path
+          encoded = ''.join(p.read_text().strip() for p in sorted(Path('tmp/terminal-blocks-v1').glob('*.b64')))
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '3cdb5e6ab9dcd4cb7ea0f28ad20e52f6408507c4f7c427d8492dec5d2c6f5abe'
+          Path(os.environ['RUNNER_TEMP'], 'terminal-blocks.patch').write_bytes(patch)
+          PY
+          git worktree add -b feat/experimental-terminal-blocks "$RUNNER_TEMP/terminal-blocks-worktree" "$BASE"
+          cd "$RUNNER_TEMP/terminal-blocks-worktree"
+          git apply --check "$RUNNER_TEMP/terminal-blocks.patch"
+          git apply --index "$RUNNER_TEMP/terminal-blocks.patch"
+          test "$(git write-tree)" = 804f43d23a3a97fdbd2d445a7965b3426a2440aa
+          git diff --cached --check
+          cargo fmt --all -- --check
+          python3 scripts/check_architecture.py --base "$BASE"
+          git -c user.name=GeekMr -c user.email=140129782+WilliamWang1721@users.noreply.github.com commit -m 'feat(terminal): add opt-in experimental command blocks'
+          git push origin HEAD:refs/heads/feat/experimental-terminal-blocks
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git bundle create "$RUNNER_TEMP/terminal-blocks-feature.bundle" "$BASE..HEAD"
       - uses: actions/upload-artifact@v4
         with:
-          name: terminal-blocks-offline-tools
-          path: ${{ runner.temp }}/offline-core.tar.gz
+          name: terminal-blocks-feature-commit
+          path: ${{ runner.temp }}/terminal-blocks-feature.bundle
           retention-days: 1
-          compression-level: 0
+  native:
+    needs: publish
+    name: Native (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, windows-11-arm, macos-26, macos-26-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: '1'
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      RUST_TOOLCHAIN: '1.97.1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify feature commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = '${{ needs.publish.outputs.head }}'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config zsh libasound2-dev libdbus-1-dev libudev-dev libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xinput-dev libxcb-xkb-dev libxi-dev
+      - name: Require current AppKit SDK
+        if: runner.os == 'macOS'
+        run: |
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          test "${sdk_version%%.*}" -ge 26
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - name: Require native ARM64 compiler
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'Arm64') { throw 'ARM64 host required' }
+          $compiler = rustc -vV
+          if ($LASTEXITCODE -ne 0 -or $compiler -notcontains 'host: aarch64-pc-windows-msvc') { throw 'Native ARM64 Rust required' }
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.146
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          extra-key: ${{ runner.os != 'macOS' && '-release-check-v2' || '' }}
+          target: |
+            target/ci
+            ${{ runner.os != 'macOS' && 'target/release' || '' }}
+          revision: dependencies-v1
+          save-if: 'false'
+      - name: Prepare Windows console runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $architecture = if ('${{ runner.arch }}' -eq 'ARM64') { 'arm64' } else { 'x64' }
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture $architecture
+          ./scripts/tests/windows-runtime.tests.ps1 -Architecture $architecture
+      - name: Test complete workspace and native harness
+        run: python scripts/ci_native_tests.py --runner nextest
+      - name: Test translation contracts
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: cargo test --locked --manifest-path tools/i18n-contract/Cargo.toml
+      - name: Check architecture against upstream
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: python scripts/check_architecture.py --base ba31b0d9c3225758121588068ba763bbf46ccb71
+      - name: Check release workspace
+        if: ${{ !cancelled() }}
+        run: cargo check --locked --workspace --release --timings
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: block-native-timings-${{ matrix.os }}
+          path: target/cargo-timings
+          if-no-files-found: warn
+          retention-days: 3
