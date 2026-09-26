@@ -1,0 +1,46 @@
+name: Issue 297 OpenCode API reference
+on:
+  push:
+    branches: [ci/issue-297-source]
+    paths: [.github/workflows/issue-297-api-reference.yml]
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: anomalyco/opencode
+          ref: v2.0.18
+          path: v2
+          persist-credentials: false
+          sparse-checkout: |
+            packages/schema
+            packages/plugin
+            packages/core/src/plugin
+            packages/core/src/session
+            packages/core/src/permission
+            packages/client
+      - uses: actions/checkout@v4
+        with:
+          repository: anomalyco/opencode
+          ref: v1.18.29
+          path: v1
+          persist-credentials: false
+          sparse-checkout: |
+            packages/opencode/src/plugin
+            packages/plugin
+      - name: Record revisions
+        run: |
+          git -C v2 rev-parse HEAD > v2/SOURCE_SHA.txt
+          git -C v1 rev-parse HEAD > v1/SOURCE_SHA.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue-297-api-reference
+          path: |
+            v2/packages
+            v1/packages
+            v2/SOURCE_SHA.txt
+            v1/SOURCE_SHA.txt
+          retention-days: 3
