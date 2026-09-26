@@ -1,0 +1,29 @@
+name: Issue 297 source archive
+on:
+  push:
+    branches: [ci/issue-297-source]
+    paths: [.github/workflows/issue-297-source.yml]
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          persist-credentials: false
+      - name: Archive upstream main
+        run: |
+          git rev-parse HEAD | tee SOURCE_SHA.txt
+          git archive --format=zip --output=pebrel-main.zip HEAD
+          sha256sum pebrel-main.zip | tee SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue-297-upstream-main
+          path: |
+            pebrel-main.zip
+            SOURCE_SHA.txt
+            SHA256SUMS.txt
+          retention-days: 3
