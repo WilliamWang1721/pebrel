@@ -1,0 +1,36 @@
+name: Issue 295 Windows validation
+
+on:
+  push:
+    branches:
+      - skill-demo/issue-295-source
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
+      RUST_TOOLCHAIN: "1.97.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7ee10a68a4f8936aa2bcd29ec57fab21510662cf
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+          components: rustfmt
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+      - name: Prepare pinned Windows console runtime
+        shell: pwsh
+        run: |
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture x64
+          ./scripts/tests/windows-runtime.tests.ps1 -Architecture x64
+      - name: Test Ctrl+/ Win32 input regression
+        run: cargo test --locked -p nebula --bin pebrel --features gpui-shell ctrl_slash_keeps_oem_2_identity_in_win32_mode
