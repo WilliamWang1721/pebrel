@@ -1,0 +1,31 @@
+name: Issue 270 investigation
+on:
+  push:
+    branches: [automation/issue-270-validation]
+    paths: [.github/workflows/issue-270-validation.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+      - name: Export complete upstream source
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/issue-270-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/issue-270-source/UPSTREAM_SHA.txt"
+          git archive --format=zip --prefix=pebrel/ HEAD > "$RUNNER_TEMP/issue-270-source/pebrel-main.zip"
+          git bundle create "$RUNNER_TEMP/issue-270-source/pebrel-main.bundle" HEAD
+          git submodule status --recursive > "$RUNNER_TEMP/issue-270-source/SUBMODULES.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue-270-upstream-source
+          path: ${{ runner.temp }}/issue-270-source/
+          retention-days: 7
