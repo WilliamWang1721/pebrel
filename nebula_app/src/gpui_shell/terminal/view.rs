@@ -3,6 +3,7 @@
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod activity_tests;
 mod agent_activity;
+pub(super) mod blocks;
 mod broadcast;
 mod completion;
 mod confirmation;
@@ -266,6 +267,7 @@ pub struct TerminalView {
     pub(super) answer_reader: Option<gpui::Entity<super::answer_reader::AnswerReader>>,
     pub pane_id: u64,
     pub session: Option<TerminalSession>,
+    pub(super) blocks: blocks::BlockInteraction,
     pub focus_handle: FocusHandle,
     /// 公式覆盖层（探测/持久化状态复用旧壳 `terminal_math`，每 pane 一份）。
     pub math: super::math_overlay::MathOverlay,
@@ -913,6 +915,9 @@ impl TerminalView {
         }
         self.palette = palette;
         self.copy_on_select = copy_on_select;
+        if !settings.terminal_blocks {
+            self.clear_block_selection();
+        }
         self.default_cursor_style = default_cursor_style;
         if let Some(session) = &self.session {
             let mut term = session.term.lock();
@@ -981,6 +986,9 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if notify && self.copy_selected_block(cx) {
+            return true;
+        }
         let Some(session) = &self.session else { return false };
         let text = session.term.lock().selection_to_string();
         let Some(text) = text.filter(|text| !text.is_empty()) else { return false };
@@ -1067,6 +1075,9 @@ impl TerminalView {
         // 在 `stop_propagation` 后会跳过 `TranslateMessage` 和 `DispatchMessage`，
         // 必须保留输入法组合、窗口关闭和系统菜单的默认处理。
         if self.marked_text.is_some() || keymap::is_native_window_shortcut(&event.keystroke) {
+            return;
+        }
+        if self.block_key(event, window, cx) {
             return;
         }
         let ks = &event.keystroke;
@@ -1440,6 +1451,9 @@ impl Render for TerminalView {
             root = root.child(div().p_4().text_color(gpui::red()).child(error.clone()));
         } else {
             root = root.child(TerminalElement::new(cx.entity()));
+            if let Some(controls) = self.block_controls(cx) {
+                root = root.child(controls);
+            }
             // SSH 连接卡片（旧壳 `display::ssh_connect` 的 GPUI 形态）：
             // 状态机/文案/常量直接复用，卡片遮罩盖住空 grid。350ms 显示
             // 门槛由 `visible()` 决定；动画帧驱动粒子与进度插值。

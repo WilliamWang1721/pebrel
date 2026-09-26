@@ -380,7 +380,10 @@ impl SettingsPane {
             cx.notify();
             return;
         }
-        if matches!(key, "ai_toasts" | "focus_follows_mouse" | "dim_inactive_panes") {
+        if matches!(
+            key,
+            "ai_toasts" | "focus_follows_mouse" | "dim_inactive_panes" | "terminal_blocks"
+        ) {
             if let Err(error) = self.try_persist(&[(key, (value as u8).to_string())], cx) {
                 let language = crate::gpui_shell::config::ui_language(cx);
                 super::toast::toast(
@@ -739,6 +742,7 @@ impl SettingsPane {
             "copy_on_select" => flag!(copy_on_select),
             "focus_follows_mouse" => Some((cur.focus_follows_mouse.is_some(), String::new())),
             "dim_inactive_panes" => flag!(dim_inactive_panes),
+            "terminal_blocks" => flag!(terminal_blocks),
             "multiline_paste_confirm" => flag!(multiline_paste_confirm),
             "tab_close_visible" => flag!(tab_close_visible),
             "terminal_proxy" => flag!(terminal_proxy),

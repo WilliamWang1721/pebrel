@@ -38,6 +38,30 @@ fn test_runtime() -> RuntimeSettings {
 }
 
 #[gpui::test]
+fn experimental_blocks_switch_defaults_off_and_persists(cx: &mut TestAppContext) {
+    let _fixture_guard = lock_theme_studio();
+    let _settings_guard = SettingsBytesGuard::capture();
+    std::fs::create_dir_all(nebula_settings::settings_dir()).unwrap();
+    std::fs::write(nebula_settings::settings_path(), TEST_SETTINGS).unwrap();
+    let (pane, mut window) = open_settings(cx);
+    pane.update(&mut window, |pane, cx| {
+        pane.active_section = 1;
+        cx.notify();
+    });
+    window.simulate_resize(size(px(1280.0), px(2200.0)));
+    draw(&mut window);
+    assert!(!RuntimeSettings::load().terminal_blocks);
+    for enabled in [true, false] {
+        click("nebula-switch-terminal_blocks", &mut window);
+        assert_eq!(RuntimeSettings::load().terminal_blocks, enabled);
+        assert_eq!(
+            window.read(|cx| cx.global::<crate::gpui_shell::config::Settings>().terminal_blocks),
+            enabled
+        );
+    }
+}
+
+#[gpui::test]
 fn ligature_menu_defaults_on_and_persists_keyboard_choices(cx: &mut TestAppContext) {
     use crate::gpui_shell::config::Settings;
     use nebula_settings::Ligatures;

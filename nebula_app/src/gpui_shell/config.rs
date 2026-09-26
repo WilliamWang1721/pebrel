@@ -81,6 +81,7 @@ pub struct Settings {
     /// Pointer handlers and split rendering only read these cached preferences.
     pub focus_follows_mouse: bool,
     pub dim_inactive_panes: bool,
+    pub terminal_blocks: bool,
     /// Cached in-app toast preference, independent of native system notifications.
     pub ai_toasts: bool,
     /// Cached display lifetime; toast delivery and native notifications are independent.
@@ -286,6 +287,7 @@ impl Settings {
                 .focus_follows_mouse
                 .unwrap_or(raw.mouse.focus_follows_mouse),
             dim_inactive_panes: runtime.dim_inactive_panes,
+            terminal_blocks: runtime.terminal_blocks,
             ai_toasts: runtime.ai_toasts,
             notification_duration: runtime.notification_duration,
             tab_close_visible: runtime.tab_close_visible,

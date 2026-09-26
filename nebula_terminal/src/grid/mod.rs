@@ -10,6 +10,7 @@ use crate::index::{Column, Line, Point};
 use crate::term::cell::{Flags, ResetDiscriminant};
 use crate::vte::ansi::{CharsetIndex, StandardCharset};
 
+mod anchors;
 pub mod resize;
 mod row;
 mod storage;

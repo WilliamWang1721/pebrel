@@ -185,6 +185,10 @@
       "needs_repair": "Hook 已安装 · 需修复",
       "initialize": "请先运行一次此工具以创建配置，然后刷新。",
       "config_path": "配置：{path}"
+    },
+    "blocks": {
+      "title": "命令块（实验性）",
+      "description": "将 shell 提示符、输入和输出分块，不替换原输入编辑器。单击已完成的输出或左侧边线选择块，拖动仍选择文字。Alt+Shift+上/下选择块，Esc 取消，使用复制快捷键复制。需要 shell 集成；全屏及接管鼠标的程序保持原交互。"
     }
   },
   "provider": {
@@ -1000,5 +1004,10 @@
     "empty": "此目录为空。",
     "error_retry": "{error}（点右上角重新读取）",
     "busy_other": "另一主机正在传输：{destination}"
+  },
+  "terminal_blocks": {
+    "copy": "复制块",
+    "copied": "已复制",
+    "copy_hint": "复制此块的提示符、命令和输出"
   }
 }

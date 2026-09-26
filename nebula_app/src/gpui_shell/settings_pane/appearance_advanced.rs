@@ -146,6 +146,13 @@ impl SettingsPane {
             ))
             .child(self.scroll_speed_row(cx))
             .child(self.switch_row(
+                "terminal_blocks",
+                language.text(crate::i18n::Message::SettingsBlocksTitle),
+                language.text(crate::i18n::Message::SettingsBlocksDescription),
+                self.runtime.terminal_blocks,
+                cx,
+            ))
+            .child(self.switch_row(
                 "fetch",
                 language.pick("启动欢迎信息", "Startup system information"),
                 help("fetch", language),

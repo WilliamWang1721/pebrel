@@ -233,6 +233,7 @@ impl TerminalView {
         ];
 
         let mut view = Self {
+            blocks: Default::default(),
             pane_id,
             session,
             focus_handle,

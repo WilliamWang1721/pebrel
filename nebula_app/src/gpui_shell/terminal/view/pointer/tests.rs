@@ -87,7 +87,7 @@ fn open(cx: &mut TestAppContext) -> (Entity<Probe>, VisualTestContext) {
     (output.unwrap(), window)
 }
 
-fn draw(cx: &mut VisualTestContext) {
+pub(in crate::gpui_shell::terminal::view) fn draw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
     cx.update(|window, cx| {
         window.refresh();
@@ -159,7 +159,7 @@ fn link_modifiers() -> Modifiers {
     }
 }
 
-fn link_fixture(
+pub(in crate::gpui_shell::terminal::view) fn link_fixture(
     cx: &mut TestAppContext,
     text: &[u8],
 ) -> (Entity<TerminalView>, VisualTestContext, std::sync::mpsc::Receiver<Msg>) {
@@ -198,7 +198,9 @@ fn cell(view: &Entity<TerminalView>, cx: &VisualTestContext, col: usize) -> Poin
     })
 }
 
-fn clipboard(cx: &mut VisualTestContext) -> Option<String> {
+pub(in crate::gpui_shell::terminal::view) fn clipboard(
+    cx: &mut VisualTestContext,
+) -> Option<String> {
     cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
 }
 

@@ -991,6 +991,8 @@ pub struct RuntimeSettings {
     pub focus_follows_mouse: Option<bool>,
     /// Preserve the existing dimming of inactive split panes unless explicitly disabled.
     pub dim_inactive_panes: bool,
+    /// Experimental shell-reported command blocks; live-applied and off by default.
+    pub terminal_blocks: bool,
     /// 裸 shell 风险粘贴确认：开 = 换行、提权命令或控制字符先确认；关 = 直接粘贴。
     pub multiline_paste_confirm: bool,
     /// 标签页关闭按钮（叉号）是否渲染：关 = 不渲染，仍可用中键关闭。
@@ -1166,6 +1168,7 @@ impl RuntimeSettings {
             ),
             focus_follows_mouse: raw.bool_on("focus_follows_mouse"),
             dim_inactive_panes: raw.bool_on("dim_inactive_panes").unwrap_or(true),
+            terminal_blocks: raw.bool_on("terminal_blocks").unwrap_or(false),
             multiline_paste_confirm: raw.bool_on("multiline_paste_confirm").unwrap_or(true),
             tab_close_visible: raw.bool_on("tab_close_visible").unwrap_or(true),
             terminal_proxy: raw.bool_on("terminal_proxy").unwrap_or(false),

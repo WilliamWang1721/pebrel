@@ -23,6 +23,7 @@ const RESET_KEYS: &[&str] = &[
     "copy_on_select",
     "focus_follows_mouse",
     "dim_inactive_panes",
+    "terminal_blocks",
     "multiline_paste_confirm",
     "tab_close_visible",
     "terminal_proxy",
@@ -129,6 +130,18 @@ fn restore_defaults_at(path: &Path) -> io::Result<Option<PathBuf>> {
 mod tests {
     use super::*;
     use crate::{RawSettings, RuntimeSettings};
+
+    #[test]
+    fn terminal_blocks_opt_in_round_trip_and_reset() {
+        for text in ["", "terminal_blocks=0\n", "terminal_blocks=invalid\n"] {
+            assert!(!RuntimeSettings::from_raw(&RawSettings::from_text(text)).terminal_blocks);
+        }
+        let text = crate::apply_updates("custom=keep\n", &[("terminal_blocks", "1".into())]);
+        assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&text)).terminal_blocks);
+        let reset = default_settings_text(&text);
+        assert_eq!(reset, "custom=keep\n");
+        assert!(!RuntimeSettings::from_raw(&RawSettings::from_text(&reset)).terminal_blocks);
+    }
 
     #[test]
     fn reset_preserves_explicit_hook_authorization_and_opt_out() {

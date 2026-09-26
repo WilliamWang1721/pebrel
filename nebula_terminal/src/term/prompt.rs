@@ -23,7 +23,10 @@ impl<T> Term<T> {
         if self.mode.contains(TermMode::ALT_SCREEN) {
             return;
         }
-        let abs = self.nebula_cursor_abs_line();
+        let abs = Point::new(
+            self.nebula_cursor_abs_line(),
+            self.grid.cursor.point.column + usize::from(self.grid.cursor.input_needs_wrap),
+        );
 
         // A screen redraw (clear, resize) can re-emit a mark for the same or
         // an earlier row; drop those so the deque stays strictly increasing.
@@ -32,7 +35,7 @@ impl<T> Term<T> {
         }
         // Prune marks whose rows have scrolled out of history entirely.
         let floor = self.grid.scrolled_out();
-        while self.nebula_prompt_marks.front().is_some_and(|&m| m < floor) {
+        while self.nebula_prompt_marks.front().is_some_and(|m| m.line < floor) {
             self.nebula_prompt_marks.pop_front();
         }
 
@@ -106,16 +109,16 @@ impl<T> Term<T> {
         let top_abs = scrolled_out + history - self.grid.display_offset();
 
         let target = if up {
-            self.nebula_prompt_marks.iter().rev().find(|&&m| m < top_abs)
+            self.nebula_prompt_marks.iter().rev().find(|m| m.line < top_abs)
         } else {
-            self.nebula_prompt_marks.iter().find(|&&m| m > top_abs)
+            self.nebula_prompt_marks.iter().find(|m| m.line > top_abs)
         };
         let Some(&mark) = target else { return false };
 
         // Put the mark's row at the viewport top: offset = history - relative
         // row. Marks on the visible screen clamp to 0 (bottom), long-gone
         // marks clamp to the scrollback top.
-        let offset = (scrolled_out + history).saturating_sub(mark).min(history);
+        let offset = (scrolled_out + history).saturating_sub(mark.line).min(history);
         let delta = offset as i32 - self.grid.display_offset() as i32;
         if delta == 0 {
             return false;

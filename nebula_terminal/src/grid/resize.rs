@@ -1,9 +1,11 @@
 //! Grid resize and reflow.
 
 use std::cmp::{Ordering, max, min};
+use std::collections::VecDeque;
 use std::mem;
 
-use crate::index::{Boundary, Column, Line};
+use super::anchors::ReflowTrim;
+use crate::index::{Boundary, Column, Line, Point};
 use crate::term::cell::{Flags, ResetDiscriminant};
 
 use crate::grid::row::Row;
@@ -16,7 +18,7 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
         T: ResetDiscriminant<D>,
         D: PartialEq,
     {
-        self.resize_impl(reflow, false, lines, columns);
+        self.resize_impl(reflow, false, lines, columns, &mut VecDeque::new());
     }
 
     /// Resize the grid with the row anchoring used by Windows ConPTY.
@@ -30,21 +32,51 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
         T: ResetDiscriminant<D>,
         D: PartialEq,
     {
-        self.resize_impl(reflow, true, lines, columns);
+        self.resize_impl(reflow, true, lines, columns, &mut VecDeque::new());
     }
 
-    fn resize_impl<D>(&mut self, reflow: bool, conpty: bool, lines: usize, columns: usize)
-    where
+    /// Resize primary-screen content and its sorted absolute cell anchors together.
+    pub(crate) fn resize_with_anchors<D>(
+        &mut self,
+        conpty: bool,
+        lines: usize,
+        columns: usize,
+        marks: &mut VecDeque<Point<usize>>,
+    ) where
+        T: ResetDiscriminant<D>,
+        D: PartialEq,
+    {
+        self.resize_impl(true, conpty, lines, columns, marks);
+    }
+
+    fn resize_impl<D>(
+        &mut self,
+        reflow: bool,
+        conpty: bool,
+        lines: usize,
+        columns: usize,
+        marks: &mut VecDeque<Point<usize>>,
+    ) where
         T: ResetDiscriminant<D>,
         D: PartialEq,
     {
         // Use empty template cell for resetting cells due to resize.
         let template = mem::take(&mut self.cursor.template);
 
+        let old_origin = self.scrolled_out() + self.history_size();
+        let old_cursor_line = self.cursor.point.line;
         match self.lines.cmp(&lines) {
             Ordering::Less => self.grow_lines(conpty, lines),
             Ordering::Greater => self.shrink_lines(conpty, lines),
             Ordering::Equal => (),
+        }
+
+        // Height changes move content with the cursor; internal scroll-limit
+        // bookkeeping can also renumber retained rows when pulling history back.
+        let shift = (self.scrolled_out() + self.history_size()) as i64 - old_origin as i64
+            + i64::from(self.cursor.point.line.0 - old_cursor_line.0);
+        for mark in marks.iter_mut() {
+            mark.line = (mark.line as i64 + shift).max(0) as usize;
         }
 
         // Anchor the cursor to the content *before* reflowing, and put it back
@@ -78,16 +110,27 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
             Ordering::Equal => false,
         };
         let anchor = if splices_rows { self.cursor_anchor() } else { None };
+        let marks_before = if splices_rows && !marks.is_empty() {
+            self.capture_anchors(marks)
+        } else {
+            Vec::new()
+        };
+        let mut trim = ReflowTrim::default();
 
         match column_order {
             Ordering::Less => self.grow_columns(reflow && self.reflow_on_grow, columns),
-            Ordering::Greater => self.shrink_columns(reflow, columns),
+            Ordering::Greater => trim = self.shrink_columns(reflow, columns),
             Ordering::Equal => (),
         }
 
         if let Some(anchor) = anchor {
             self.restore_cursor_anchor(anchor);
         }
+
+        if splices_rows && !marks.is_empty() {
+            self.restore_anchors(&marks_before, trim, marks);
+        }
+        self.retain_anchors(marks);
 
         // Restore template cell.
         self.cursor.template = template;
@@ -356,7 +399,7 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
     }
 
     /// Shrink number of columns in each row, reflowing if necessary.
-    fn shrink_columns(&mut self, reflow: bool, columns: usize) {
+    fn shrink_columns(&mut self, reflow: bool, columns: usize) -> ReflowTrim {
         self.columns = columns;
 
         // Remove the linewrap special case, by moving the cursor outside of the grid.
@@ -489,7 +532,18 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
 
         // Reverse iterator and use it as the new grid storage.
         let mut reversed: Vec<Row<T>> = new_raw.drain(..).rev().collect();
-        reversed.truncate(self.max_scroll_limit + self.lines);
+        let limit = self.max_scroll_limit + self.lines;
+        let mut trim = ReflowTrim::default();
+        if let Some(dropped) = reversed.get(limit..) {
+            trim.partial = dropped
+                .first()
+                .is_some_and(|row| row[Column(columns - 1)].flags().contains(Flags::WRAPLINE));
+            trim.lines = dropped
+                .iter()
+                .filter(|row| !row[Column(columns - 1)].flags().contains(Flags::WRAPLINE))
+                .count();
+        }
+        reversed.truncate(limit);
         self.raw.replace_inner(reversed);
 
         // Clamp display offset in case some lines went off.
@@ -509,13 +563,14 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
 
         // Clamp the saved cursor to the grid.
         self.saved_cursor.point.column = min(self.saved_cursor.point.column, Column(columns - 1));
+        trim
     }
 
     /// Whether this row soft-wraps into the one below it.
     ///
     /// The flag lives on the row's *physical* last cell, which is where both
     /// `shrink_columns` writes it and `grow_columns` reads it.
-    fn has_wrapline(&self, line: Line) -> bool {
+    pub(super) fn has_wrapline(&self, line: Line) -> bool {
         if line < self.topmost_line() || line > self.bottommost_line() {
             return false;
         }
@@ -530,7 +585,7 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
     /// A trailing [`Flags::LEADING_WIDE_CHAR_SPACER`] is padding inserted because
     /// a wide char would not fit — the char itself lives on the continuation row,
     /// so the spacer holds no content and must not shift the offset.
-    fn logical_width(&self, line: Line) -> usize {
+    pub(super) fn logical_width(&self, line: Line) -> usize {
         let row = &self[line];
         let len = row.len();
         if len > 0 && row[Column(len - 1)].flags().contains(Flags::LEADING_WIDE_CHAR_SPACER) {

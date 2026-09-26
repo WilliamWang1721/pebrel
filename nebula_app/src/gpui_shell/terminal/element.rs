@@ -85,39 +85,42 @@ impl TerminalElement {
         &self,
         rows: usize,
         cols: usize,
-        cx: &App,
+        cx: &mut App,
     ) -> Option<(RenderSnapshot, Option<String>, usize, super::osc_links::LinkCells, usize, i64)>
     {
-        let view = self.view.read(cx);
-        let session = view.session.as_ref()?;
-        let hint_config = view.hint_config.clone();
-        let term = session.term.lock();
-        #[cfg(windows)]
-        let prompt_line = if term.mode().intersects(TermMode::ALT_SCREEN | TermMode::VI) {
-            None
-        } else {
-            let cursor = term.grid().cursor.point;
-            crate::display::nebula_input_from_raw_grid(
+        let enabled = super::view::blocks::enabled(cx);
+        self.view.update(cx, |view, _| {
+            let session = view.session.as_ref()?;
+            let hint_config = view.hint_config.clone();
+            let mut term = session.term.lock();
+            view.blocks.capture(&mut term, rows, enabled);
+            #[cfg(windows)]
+            let prompt_line = if term.mode().intersects(TermMode::ALT_SCREEN | TermMode::VI) {
+                None
+            } else {
+                let cursor = term.grid().cursor.point;
+                crate::display::nebula_input_from_raw_grid(
+                    &term,
+                    cursor,
+                    &view.suggest.line_buf,
+                    &view.suggest.suggest_env,
+                )
+            };
+            #[cfg(not(windows))]
+            let prompt_line = None;
+            // 分段只反映内容与宽度类，绝不掺入光标状态：per-cell 绘制下反色只是
+            // 换色，若让闪烁相位改变分段，整行会随闪烁重塑形而跳字。
+            let snapshot = RenderSnapshot::capture(
                 &term,
-                cursor,
-                &view.suggest.line_buf,
-                &view.suggest.suggest_env,
-            )
-        };
-        #[cfg(not(windows))]
-        let prompt_line = None;
-        // 分段只反映内容与宽度类，绝不掺入光标状态：per-cell 绘制下反色只是
-        // 换色，若让闪烁相位改变分段，整行会随闪烁重塑形而跳字。
-        let snapshot = RenderSnapshot::capture(
-            &term,
-            &SnapshotConfig { rows: rows as u16, cols: cols as u16 },
-        );
-        let history = term.history_size();
-        let dashed = super::osc_links::dashed_cells(&term, &hint_config, rows, cols);
-        let scrollback_floor = term.grid().scrolled_out();
-        let image_anchor = scrollback_floor.saturating_add(history) as i64;
-        let viewport_top_abs = image_anchor + i64::from(term.viewport_origin_for(rows).0);
-        Some((snapshot, prompt_line, history, dashed, scrollback_floor, viewport_top_abs))
+                &SnapshotConfig { rows: rows as u16, cols: cols as u16 },
+            );
+            let history = term.history_size();
+            let dashed = super::osc_links::dashed_cells(&term, &hint_config, rows, cols);
+            let scrollback_floor = term.grid().scrolled_out();
+            let image_anchor = scrollback_floor.saturating_add(history) as i64;
+            let viewport_top_abs = image_anchor + i64::from(term.viewport_origin_for(rows).0);
+            Some((snapshot, prompt_line, history, dashed, scrollback_floor, viewport_top_abs))
+        })
     }
 
     /// 把**应用写死的**颜色按当前主题矫正，直接写回快照。
@@ -404,6 +407,14 @@ impl Element for TerminalElement {
             }
             paint(run.start, run.end, run.color);
         }
+        self.view.read(cx).blocks.paint(
+            bounds,
+            layout.cell_width,
+            layout.line_height,
+            cx.theme().border,
+            cx.theme().foreground,
+            window,
+        );
         let selection_fill = if is_default_selection(&theme) {
             let alpha = if theme_is_light {
                 crate::display::ui::tokens::terminal_feedback::SELECTION_ALPHA_LIGHT

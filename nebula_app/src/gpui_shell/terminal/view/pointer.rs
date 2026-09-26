@@ -3,7 +3,7 @@ use super::*;
 use gpui_component::WindowExt as _;
 
 #[cfg(all(test, feature = "gpui-test-support"))]
-mod tests;
+pub(super) mod tests;
 
 impl TerminalView {
     pub(in crate::gpui_shell::terminal) fn scrollbar_thumb(
@@ -369,6 +369,7 @@ impl TerminalView {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus_handle, cx);
+        self.blocks.cancel_press();
         self.pending_link_open = false;
         cx.emit(TerminalViewEvent::FocusRequested);
         if self.session.is_none() {
@@ -435,6 +436,7 @@ impl TerminalView {
             );
             return;
         }
+        self.begin_block_click(event, cx);
         let (point, side) = self.grid_point(event.position);
         let ty = match event.click_count {
             1 => SelectionType::Simple,
@@ -469,6 +471,7 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.track_block_pointer(event, cx);
         // Retain the pressed link until release; dragging must not retarget it
         // or leak part of the consumed gesture to the application.
         if self.pending_link_open {
@@ -599,6 +602,7 @@ impl TerminalView {
             );
             return;
         }
+        self.finish_block_click(event, cx);
         self.selecting = false;
         let (point, _) = self.grid_point(event.position);
         let open_link = pending_link_open
@@ -628,6 +632,7 @@ impl TerminalView {
         }
         self.stop_selection_scroll();
         let dragging_scrollbar = self.scrollbar_drag.take().is_some();
+        self.blocks.cancel_press();
         self.pending_link_open = false;
         if !self.selecting {
             if dragging_scrollbar {

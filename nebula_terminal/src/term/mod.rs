@@ -27,6 +27,7 @@ use crate::vte::ansi::{
     StandardCharset,
 };
 
+pub mod blocks;
 pub mod cell;
 mod clear;
 pub mod color;
@@ -228,10 +229,10 @@ pub struct Term<T> {
     /// Information about damaged cells.
     damage: TermDamageState,
 
-    /// Absolute line numbers of shell prompt rows reported via OSC 133;A
+    /// Absolute cell positions of shell prompts reported via OSC 133;A
     /// (see [`Grid::scrolled_out`] for the numbering). Strictly increasing;
     /// stale entries are pruned lazily. Primary screen only.
-    nebula_prompt_marks: VecDeque<usize>,
+    nebula_prompt_marks: VecDeque<Point<usize>>,
 
     /// Whether OSC 133 currently identifies this pane as accepting shell input.
     nebula_prompt_active: bool,
@@ -754,25 +755,19 @@ impl<T> Term<T> {
         self.vi_mode_cursor.point.line += delta;
 
         let is_alt = self.mode.contains(TermMode::ALT_SCREEN);
-        if self.config.conpty_resize {
-            // The primary screen might currently be inactive. Preserve ConPTY
-            // row semantics there only; full-screen applications own and repaint
-            // the alternate screen after a resize.
-            if is_alt {
-                self.grid.resize(!is_alt, num_lines, num_cols);
-                self.inactive_grid.resize_conpty(is_alt, num_lines, num_cols);
-            } else {
-                self.grid.resize_conpty(!is_alt, num_lines, num_cols);
-                self.inactive_grid.resize(is_alt, num_lines, num_cols);
-            }
+        let (primary, alternate) = if is_alt {
+            (&mut self.inactive_grid, &mut self.grid)
         } else {
-            self.grid.resize(!is_alt, num_lines, num_cols);
-            self.inactive_grid.resize(is_alt, num_lines, num_cols);
-        }
+            (&mut self.grid, &mut self.inactive_grid)
+        };
+        primary.resize_with_anchors(
+            self.config.conpty_resize,
+            num_lines,
+            num_cols,
+            &mut self.nebula_prompt_marks,
+        );
+        alternate.resize(false, num_lines, num_cols);
 
-        // Reflow rewraps history rows, so absolute prompt-mark lines no longer
-        // match; drop them rather than jump to shifted positions.
-        self.nebula_prompt_marks.clear();
         self.nebula_prompt_input = None;
 
         // Invalidate selection and tabs only when necessary.

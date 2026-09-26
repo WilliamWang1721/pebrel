@@ -185,6 +185,10 @@
       "needs_repair": "Hook installed · needs repair",
       "initialize": "Run this agent once to create its configuration, then refresh.",
       "config_path": "Configuration: {path}"
+    },
+    "blocks": {
+      "title": "Command blocks (experimental)",
+      "description": "Group shell prompts and output without replacing the shell editor. Click completed output or the left gutter to select a block; drag to select text. Alt+Shift+Up/Down selects blocks, Escape clears, and your Copy shortcut copies. Requires shell integration; full-screen and mouse-reporting apps stay unchanged."
     }
   },
   "provider": {
@@ -1000,5 +1004,10 @@
     "empty": "This directory is empty.",
     "error_retry": "{error} (click Reload in the top-right to retry)",
     "busy_other": "Another host is transferring: {destination}"
+  },
+  "terminal_blocks": {
+    "copy": "Copy block",
+    "copied": "Copied",
+    "copy_hint": "Copy this prompt, command and output"
   }
 }
