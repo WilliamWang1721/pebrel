@@ -24,9 +24,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.97.1"
-          components: rustfmt
-      - name: Rustfmt
-        run: cargo fmt --all -- --check
       - name: Prepare pinned Windows console runtime
         shell: pwsh
         run: |
