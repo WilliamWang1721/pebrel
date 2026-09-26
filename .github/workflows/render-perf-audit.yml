@@ -2,10 +2,16 @@ name: Render performance audit
 on:
   push:
     branches: [ci/render-perf-audit-20260926]
+    paths: [.github/workflows/render-perf-audit.yml]
 permissions:
   contents: read
+env:
+  BASE: ba31b0d9c3225758121588068ba763bbf46ccb71
+  HEAD: 5a57751b6931a86c406f3ee58fe55d6bb5b70b60
+  EXPECTED_TREE: bffc724da7f2dd22f0deca67013afcf9200268f7
+  PYTHONUTF8: '1'
 jobs:
-  native-preparation-probe:
+  probe:
     if: github.repository == 'WilliamWang1721/pebrel'
     strategy:
       fail-fast: false
@@ -16,11 +22,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      BASE: ba31b0d9c3225758121588068ba763bbf46ccb71
-      HEAD: 5a57751b6931a86c406f3ee58fe55d6bb5b70b60
-      EXPECTED_TREE: 2fcd67be1b9f6ecf3a8fe393de3b09eba97c8c4d
-      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,15 +33,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.97.1'
-      - name: Extract exact committed source and add no-output edge workloads
+          components: rustfmt
+      - name: Prepare isolated source and stack variant
         run: |
           set -euo pipefail
           git worktree add --detach "$RUNNER_TEMP/before" "$BASE"
-          git worktree add --detach "$RUNNER_TEMP/after" "$HEAD"
-          test "$(git -C "$RUNNER_TEMP/after" rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          git worktree add --detach "$RUNNER_TEMP/after" "$BASE"
+          git -C "$RUNNER_TEMP/after" apply "$GITHUB_WORKSPACE/tmp/render-text-stack.patch"
+          git -C "$RUNNER_TEMP/after" add nebula_app/src/gpui_shell/terminal/element.rs
+          test "$(git -C "$RUNNER_TEMP/after" write-tree)" = "$EXPECTED_TREE"
           mkdir -p "$RUNNER_TEMP/evidence"
           rustc -vV > "$RUNNER_TEMP/evidence/rustc.txt"
           python -c 'import platform; print(platform.platform()); print(platform.machine()); print(platform.processor())' > "$RUNNER_TEMP/evidence/platform.txt"
+          printf '%s\n%s\n' "$BASE" "$EXPECTED_TREE" > "$RUNNER_TEMP/evidence/identity.txt"
+          cp tmp/render-text-stack.patch "$RUNNER_TEMP/evidence/product.diff"
           python tmp/render-text-probe.py "$RUNNER_TEMP/before" "$RUNNER_TEMP/after" "$RUNNER_TEMP/evidence/probe"
           python - <<'PY'
           import os
@@ -67,23 +73,67 @@ jobs:
           assert pos != -1
           path.write_text(text[:pos] + extension + text[pos:])
           PY
-      - name: Validate allocations and Unicode equivalence
+      - name: Formatting and architecture checks
+        if: matrix.os == 'ubuntu-24.04'
+        working-directory: ${{ runner.temp }}/after
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          git diff --cached --check
+          python scripts/check_architecture.py --base "$BASE" | tee "$RUNNER_TEMP/evidence/architecture.txt"
+      - name: Allocation and Unicode equivalence
         working-directory: ${{ runner.temp }}/evidence/probe
         run: |
           set -euo pipefail
           cargo run --release --features count-alloc 2>&1 | tee ../allocations.txt
-      - name: Measure preparation and no-output paths without the counting allocator
+      - name: Uninstrumented preparation and no-output timings
         working-directory: ${{ runner.temp }}/evidence/probe
         run: |
           set -euo pipefail
           cargo run --release --locked 2>&1 | tee ../timings.txt
-      - name: Remove build artifacts from evidence
+      - name: Remove build outputs from evidence
         if: always()
         run: rm -rf "$RUNNER_TEMP/evidence/probe/target"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: text-preparation-${{ matrix.os }}
+          name: stack-text-${{ matrix.os }}
           path: ${{ runner.temp }}/evidence
+          retention-days: 14
+          if-no-files-found: error
+  publish:
+    needs: probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Commit only the validated feature tree and dispatch unchanged CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git worktree add -b perf/render-snapshot-text "$RUNNER_TEMP/product" "$HEAD"
+          git -C "$RUNNER_TEMP/product" apply -R "$GITHUB_WORKSPACE/tmp/render-text.patch"
+          git -C "$RUNNER_TEMP/product" apply "$GITHUB_WORKSPACE/tmp/render-text-stack.patch"
+          cd "$RUNNER_TEMP/product"
+          git add nebula_app/src/gpui_shell/terminal/element.rs
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          git diff --cached --check
+          git -c user.name=WilliamWang1721 -c user.email=140129782+WilliamWang1721@users.noreply.github.com commit -m 'perf(terminal): preserve character iteration with stack UTF-8 encoding'
+          git push origin HEAD:refs/heads/perf/render-snapshot-text
+          mkdir -p "$RUNNER_TEMP/product-evidence"
+          git bundle create "$RUNNER_TEMP/product-evidence/product.bundle" perf/render-snapshot-text "^$BASE"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/product-evidence/identity.txt"
+          gh workflow run architecture.yml --repo "$GITHUB_REPOSITORY" --ref perf/render-snapshot-text
+          gh workflow run linux-lua.yml --repo "$GITHUB_REPOSITORY" --ref perf/render-snapshot-text
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-stack-product
+          path: ${{ runner.temp }}/product-evidence
           retention-days: 14
           if-no-files-found: error
