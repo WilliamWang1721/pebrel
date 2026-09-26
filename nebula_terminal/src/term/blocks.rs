@@ -1,5 +1,6 @@
 //! Shell-reported command regions over the existing scrollback. Text is read
 //! only when selected/copied; regions never own another copy of terminal output.
+use super::cell::LineLength;
 use super::{Term, TermMode};
 use crate::grid::Dimensions;
 use crate::index::{Boundary, Column, Line, Point, Side};
@@ -35,8 +36,9 @@ impl PromptBlock {
 }
 
 impl<T> Term<T> {
-    /// O(log(mark count) + visible blocks), without allocations. Unsupported
-    /// shells have no marks; alternate-screen and mouse-reporting apps opt out.
+    /// Allocation-free lookup of visible blocks in the ordered prompt marks.
+    /// Only the unfinished block inspects the bounded primary-screen tail, never
+    /// scrollback, since editing can leave the cursor before its final character.
     pub fn prompt_blocks(&self, rows: Range<Line>) -> impl Iterator<Item = PromptBlock> + '_ {
         let origin = self.grid.scrolled_out() + self.grid.history_size();
         let top = (origin as i64 + i64::from(rows.start.0)).max(0) as usize;
@@ -55,11 +57,19 @@ impl<T> Term<T> {
                 }
                 let last = i + 1 == marks.len();
                 let end = marks.get(i + 1).copied().unwrap_or_else(|| {
-                    Point::new(
-                        self.nebula_cursor_abs_line(),
+                    let cursor = Point::new(
+                        self.grid.cursor.point.line,
                         self.grid.cursor.point.column
                             + usize::from(self.grid.cursor.input_needs_wrap),
-                    )
+                    );
+                    let end = (cursor.line.0..=self.grid.bottommost_line().0)
+                        .rev()
+                        .find_map(|line| {
+                            let column = self.grid[Line(line)].line_length();
+                            (column.0 > 0).then_some(Point::new(Line(line), column))
+                        })
+                        .map_or(cursor, |end| end.max(cursor));
+                    Point::new((origin as i64 + i64::from(end.line.0)) as usize, end.column)
                 });
                 let relative = |p: Point<usize>| {
                     let mut p = Point::new(Line((p.line as i64 - origin as i64) as i32), p.column);

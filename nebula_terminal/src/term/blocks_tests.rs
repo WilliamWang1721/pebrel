@@ -94,3 +94,13 @@ fn unintegrated_shells_and_mouse_reporting_are_not_block_interactions() {
     feed(&mut term, b"\x1b[?1000l");
     assert!(term.prompt_blocks(Line(-100)..Line(100)).next().is_some());
 }
+
+#[test]
+fn live_input_copy_keeps_text_after_a_cursor_moved_back_for_editing() {
+    let mut term = Term::new(Config::default(), &TermSize::new(12, 8), VoidListener);
+    feed(&mut term, b"\x1b]133;A\x07$ abcdefghijklmnop\r\n> second line\x1b[2A\r");
+    let block = term.prompt_blocks(Line(0)..Line(8)).next().unwrap();
+    assert!(block.accepting_input);
+    term.selection = block.selection(&term);
+    assert_eq!(term.selection_to_string().as_deref(), Some("$ abcdefghijklmnop\n> second line"));
+}

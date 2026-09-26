@@ -58,7 +58,7 @@ impl BlockInteraction {
     }
 
     // Reuse the renderer's single snapshot lock and this vector's capacity.
-    // No output strings, extra grid scans or per-block locks in the paint path.
+    // No output strings, scrollback scans or per-block locks in the paint path.
     pub(in super::super) fn capture<T>(&mut self, term: &mut Term<T>, rows: usize, on: bool) {
         self.regions.clear();
         if !on {

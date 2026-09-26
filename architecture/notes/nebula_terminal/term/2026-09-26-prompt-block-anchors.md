@@ -26,7 +26,10 @@ Guessing boundaries from text would misidentify arbitrary command output.
 
 Keep prompt ownership in the terminal crate. Enrich the existing marks with their
 column, derive half-open block ranges from consecutive marks and the live cursor,
-and reuse the ordinary selection/extraction implementation. Block copying includes
+and reuse the ordinary selection/extraction implementation. The unfinished block
+also reads the bounded primary-screen tail: the shell cursor may sit in the middle
+of a multi-line input, so cursor position alone would truncate copying. This never
+scans scrollback or guesses a prompt from text. Block copying includes
 the prompt, command and output, with no UI labels or added formatting.
 
 Map marks through primary-grid reflow as logical-line offsets, including when that
@@ -73,11 +76,16 @@ copying rather than falsely advertised as complete.
 
 ## Validation
 
-The focused block regressions and all 233 terminal unit tests passed using Rust
+The focused block regressions and all 234 terminal unit tests passed using Rust
 1.97.1 against the working production sources through an isolated offline manifest.
 All 75 settings tests passed, including absent/invalid defaults, persistence and
 reset. These are not substitutes for the locked complete workspace or native UI
-checks. Added GPUI tests exercise real hitboxes, copy payload/feedback, keyboard
+checks. A Linux x86_64 release microbenchmark (80x24, 7 samples of 100,000
+queries with a reused region vector) measured 0.27/0.28/0.29 microseconds median
+with 500/5,000/50,000 retained commands. Scanning the blank physical-screen tail
+measured 1.22/1.31/1.25 microseconds; all samples made zero allocations after
+warm-up. These measure region lookup, not frame time or native application throughput.
+Added GPUI tests exercise real hitboxes, copy payload/feedback, keyboard
 exit/navigation, drag selection, and live disabling. Native build/test results and
 visual/DPI coverage must be recorded in the PR rather than inferred here.
 
