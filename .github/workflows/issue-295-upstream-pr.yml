@@ -1,0 +1,51 @@
+name: Submit issue 295 upstream PR
+on:
+  push:
+    branches: [automation/issue-295-validation]
+    paths: [.github/workflows/issue-295-upstream-pr.yml]
+permissions:
+  contents: read
+jobs:
+  submit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create the upstream pull request
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_PR_PAT }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          repo = 'Kuddev/pebrel'
+          head = 'WilliamWang1721:fix/windows-ctrl-slash'
+          existing = json.loads(subprocess.check_output([
+              'gh', 'api', f'repos/{repo}/pulls?state=open&head={head}&base=main'
+          ], text=True))
+          if existing:
+              assert len(existing) == 1
+              print(existing[0]['html_url'])
+          else:
+              body = '''## Summary
+          Fixes #295.
+
+          Resolve `/` through the active Windows keyboard layout and preserve its virtual key, scan code and required modifiers in the existing ConPTY press/release records, instead of falling back to the ambiguous `0x1f` byte.
+
+          Keep ordinary punctuation on the text/IME path. Extend the existing Windows input test and verify that legacy VT and Kitty encodings remain unchanged. No new dependencies or settings.
+
+          ## Validation
+          - Rust 1.97.1 formatting, architecture checks and platform cfg budget passed.
+          - Two self-review passes completed.
+          - Native Windows keymap tests and a bundled-ConPTY comparison are in progress in the fork.
+          - Interactive Codex BTW switching has not yet been verified.
+          '''
+              result = subprocess.run(['gh', 'api', f'repos/{repo}/pulls', '--method', 'POST', '--input', '-'], input=json.dumps({
+                  'title': 'fix(windows): preserve Ctrl+/ in ConPTY input records',
+                  'body': body,
+                  'head': head,
+                  'base': 'main',
+                  'draft': False,
+                  'maintainer_can_modify': True,
+              }), text=True, capture_output=True, check=True)
+              print(json.loads(result.stdout)['html_url'])
+          PY
