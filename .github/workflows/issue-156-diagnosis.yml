@@ -1,0 +1,103 @@
+name: Issue 156 encoding diagnosis
+on:
+  push:
+    branches: [codex/issue-156-diagnosis]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install diagnostic tools on disposable runner
+        shell: pwsh
+        run: |
+          Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient -All -NoRestart
+          python -m pip install pywinpty==2.0.15
+          (Get-Item "$env:SystemRoot/System32/telnet.exe").VersionInfo | Format-List
+      - name: Compare native output and telnet across console code pages
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          import socket
+          import threading
+          import time
+          from winpty import PtyProcess
+
+          output = Path('diagnostic-output')
+          output.mkdir()
+          sample = '屏幕闲置超时，进入事件处理；发送短路输入状态：0'
+          payload = ('BEGIN156\r\n' + sample + '\r\nEND156\r\n').encode('utf-8')
+          (output / 'payload.bin').write_bytes(payload)
+          # os.write uses the console byte API, independently of Python's Unicode console I/O.
+          Path('raw156.py').write_text('import os\nos.write(1, ' + repr(payload) + ')\n', encoding='utf-8')
+          results = []
+          for cp in (936, 65001):
+              for mode in ('raw', 'telnet'):
+                  errors = []
+                  listener = socket.socket()
+                  listener.bind(('127.0.0.1', 0))
+                  listener.listen(1)
+                  listener.settimeout(15)
+                  port = listener.getsockname()[1]
+                  def serve():
+                      try:
+                          with listener.accept()[0] as client:
+                              # Plain NVT ASCII markers bound the UTF-8 sample; no private device data.
+                              client.sendall(payload)
+                              time.sleep(2)
+                      except Exception as exc:
+                          errors.append(repr(exc))
+                  server = None
+                  if mode == 'telnet':
+                      server = threading.Thread(target=serve, daemon=True)
+                      server.start()
+                  command = 'python raw156.py' if mode == 'raw' else f'telnet.exe 127.0.0.1 {port}'
+                  proc = PtyProcess.spawn(['cmd.exe', '/d', '/c', f'chcp {cp}>nul & {command}'],
+                                          dimensions=(30, 160), backend=1)
+                  chunks = []
+                  finished = threading.Event()
+                  def read_output():
+                      try:
+                          while True:
+                              chunks.append(proc.read(4096))
+                      except EOFError:
+                          pass
+                      except Exception as exc:
+                          errors.append(repr(exc))
+                      finally:
+                          finished.set()
+                  reader = threading.Thread(target=read_output, daemon=True)
+                  reader.start()
+                  finished.wait(8)
+                  if proc.isalive():
+                      proc.terminate(force=True)
+                  reader.join(3)
+                  if reader.is_alive():
+                      raise RuntimeError("ConPTY reader did not stop")
+                  if server:
+                      server.join(16)
+                  listener.close()
+                  text = ''.join(chunks)
+                  (output / f'{mode}-{cp}.txt').write_text(text, encoding='utf-8')
+                  result = dict(mode=mode, codepage=cp, sample_preserved=sample in text,
+                                markers_present='BEGIN156' in text and 'END156' in text,
+                                errors=errors, output=text)
+                  results.append(result)
+                  print(json.dumps(result, ensure_ascii=True))
+          (output / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
+          assert all(not item['errors'] and item['markers_present'] for item in results), results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-156-encoding-evidence
+          path: diagnostic-output
+          if-no-files-found: error
+          retention-days: 7
