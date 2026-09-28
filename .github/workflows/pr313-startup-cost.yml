@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      BASE_SHA: 77e6470a9d1c938b9ee044df90f5524bf6d0d505
-      HEAD_SHA: ae578b08fcb79a8e0febd31f413362922c6e82d5
+      BASE_SHA: 360613aa6eedfa4e441d658d98db502e8a81442b
+      HEAD_SHA: 57329fbaedd2e529b2c6c2c9a0e1f7700962b4d7
     steps:
       - uses: actions/checkout@v4
         with:
