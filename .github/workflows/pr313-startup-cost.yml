@@ -1,0 +1,194 @@
+name: PR 313 startup cost comparison
+
+on:
+  push:
+    branches: [codex/pr313-startup-cost-bench-20260928]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BASE_SHA: cff23341361d7f5764fe6040e005bc94370b6c04
+      HEAD_SHA: 0aea9b133ac1b4f177942dbe85bc20dd0416e6c3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - name: Install Linux and Xvfb dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config zsh libasound2-dev libdbus-1-dev libudev-dev \
+            libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libgl1-mesa-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcb-xinput-dev libxcb-xkb-dev libxi-dev xauth xvfb x11-utils
+      - name: Prepare a representative Lua config and measurement runner
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/startup.lua" <<'LUA'
+          local pebrel = require 'pebrel'
+          local config = pebrel.config_builder()
+          config.scrolling = { history = 10000 }
+          config.font = { size = 13.0, builtin_box_drawing = true }
+          config.window = {
+              dimensions = { columns = 155, lines = 43 },
+              opacity = 0.96,
+              padding = { x = 8, y = 8 },
+          }
+          config.cursor = {
+              style = { shape = 'Beam', blinking = 'On' },
+              unfocused_hollow = true,
+          }
+          config.colors = {
+              primary = { foreground = '#d8dee9', background = '#16181d' },
+          }
+          config.env = { EDITOR = 'nvim' }
+          return config
+          LUA
+          cat > "$RUNNER_TEMP/measure.py" <<'PY'
+          import os
+          import re
+          import signal
+          import statistics
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          from pathlib import Path
+
+          config = sys.argv[1]
+          binaries = {"base": sys.argv[2], "head": sys.argv[3]}
+          order = ("base", "head", "head", "base", "base", "head")
+          results = {"base": [], "head": []}
+          env = os.environ.copy()
+          env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+
+          def peak_rss_kib(pid):
+              status = Path(f"/proc/{pid}/status").read_text()
+              match = re.search(r"^VmHWM:\s+(\d+)\s+kB$", status, re.MULTILINE)
+              if not match:
+                  raise RuntimeError("Linux did not report VmHWM")
+              return int(match.group(1))
+
+          def has_viewable_window():
+              tree = subprocess.run(
+                  ["xwininfo", "-root", "-children"],
+                  check=True, capture_output=True, text=True,
+              ).stdout
+              for window in re.findall(r"^\s*(0x[0-9a-fA-F]+)", tree, re.MULTILINE):
+                  info = subprocess.run(
+                      ["xwininfo", "-id", window],
+                      check=False, capture_output=True, text=True,
+                  ).stdout
+                  if "Map State: IsViewable" in info:
+                      return True
+              return False
+
+          for index, label in enumerate(order, 1):
+              log_path = Path(os.environ["RUNNER_TEMP"]) / f"pebrel-{label}-{index}.log"
+              run_env = env.copy()
+              state_dir = tempfile.mkdtemp(
+                  prefix=f"pebrel-{label}-{index}-", dir=os.environ["RUNNER_TEMP"]
+              )
+              run_env["XDG_RUNTIME_DIR"] = state_dir
+              run_env["XDG_CONFIG_HOME"] = f"{state_dir}/config"
+              run_env["XDG_DATA_HOME"] = f"{state_dir}/data"
+              run_env["XDG_CACHE_HOME"] = f"{state_dir}/cache"
+              with log_path.open("wb") as log:
+                  process = subprocess.Popen(
+                      [binaries[label], "--config-file", config],
+                      stdout=log, stderr=subprocess.STDOUT,
+                      env=run_env, start_new_session=True,
+                  )
+                  started = time.perf_counter()
+                  deadline = started + 90
+                  try:
+                      while time.perf_counter() < deadline:
+                          if process.poll() is not None:
+                              log.flush()
+                              raise RuntimeError(
+                                  f"{label} exited {process.returncode}:\n"
+                                  + log_path.read_text(errors="replace")[-4000:]
+                              )
+                          if has_viewable_window():
+                              elapsed_ms = (time.perf_counter() - started) * 1000
+                              rss_kib = peak_rss_kib(process.pid)
+                              results[label].append((elapsed_ms, rss_kib))
+                              print(
+                                  f"{label} run {index}: first viewable X11 window "
+                                  f"{elapsed_ms:.1f} ms; peak RSS {rss_kib / 1024:.1f} MiB",
+                                  flush=True,
+                              )
+                              break
+                          time.sleep(0.025)
+                      else:
+                          log.flush()
+                          raise RuntimeError(
+                              f"{label} produced no viewable X11 window in 90 seconds:\n"
+                              + log_path.read_text(errors="replace")[-4000:]
+                          )
+                  finally:
+                      if process.poll() is None:
+                          try:
+                              os.killpg(process.pid, signal.SIGTERM)
+                          except ProcessLookupError:
+                              pass
+                          try:
+                              process.wait(timeout=5)
+                          except subprocess.TimeoutExpired:
+                              try:
+                                  os.killpg(process.pid, signal.SIGKILL)
+                              except ProcessLookupError:
+                                  pass
+                              process.wait()
+                      time.sleep(0.5)
+
+          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as output:
+              output.write(
+                  "\n| Revision | Median time to first viewable X11 window | "
+                  "Three-run range | Median peak RSS at first window |\n"
+                  "|---|---:|---:|---:|\n"
+              )
+              for label, sha in (("base", os.environ["BASE_SHA"]), ("head", os.environ["HEAD_SHA"])):
+                  times = [sample[0] for sample in results[label]]
+                  memory = [sample[1] for sample in results[label]]
+                  output.write(
+                      f"| {label} ({sha[:7]}) | {statistics.median(times):.1f} ms | "
+                      f"{min(times):.1f}–{max(times):.1f} ms | "
+                      f"{statistics.median(memory) / 1024:.1f} MiB |\n"
+                  )
+              output.write(
+                  "\nMeasured on Ubuntu 24.04 with Rust 1.97.1 and the same locked "
+                  "Release build. Each revision used the same Lua file; three runs "
+                  "were interleaved. Time is process start to the first viewable X11 "
+                  "window. RSS is Linux VmHWM sampled then, so these results describe "
+                  "this runner only.\n"
+              )
+          PY
+      - name: Build and measure both revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          git checkout --detach "$BASE_SHA"
+          cargo build --locked --release -p nebula --bin pebrel --features gpui-shell
+          cp target/release/pebrel "$RUNNER_TEMP/pebrel-base"
+          git checkout --detach "$HEAD_SHA"
+          cargo build --locked --release -p nebula --bin pebrel --features gpui-shell
+          cp target/release/pebrel "$RUNNER_TEMP/pebrel-head"
+          xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +render -noreset" \
+            python3 "$RUNNER_TEMP/measure.py" \
+            "$RUNNER_TEMP/startup.lua" \
+            "$RUNNER_TEMP/pebrel-base" \
+            "$RUNNER_TEMP/pebrel-head"
