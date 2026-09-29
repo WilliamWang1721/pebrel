@@ -19,7 +19,9 @@ mod agent_hooks;
 pub use agent_hooks::AgentHook;
 mod app_icon;
 pub use app_icon::{AppIconName, AppIconPalette};
+mod cursor_motion;
 mod custom_theme;
+pub use cursor_motion::CursorMotion;
 pub use custom_theme::{
     IndexedPalette, TerminalThemeColors, ThemeAppearance, ThemeDefinition, ThemeEffects,
     ThemeLayout, ThemeTypography, ThemeUiColors, ThemeValidationError, foreground_recommendations,
@@ -975,10 +977,14 @@ pub struct RuntimeSettings {
     /// **逻辑像素**（旧壳写盘语义：设置页 spinner 与 Ctrl+滚轮缩放持久化时
     /// 已除以 scale factor）。`None` = 跟随 nebula.toml 的 `font.size`（pt）。
     pub font_size_px: Option<f32>,
+    /// Ctrl+滚轮缩放终端字号。默认开启以保留既有行为；关闭时该手势被整体
+    /// 消费：既不缩放，也不回落成普通滚动。不影响普通滚轮与键盘字号快捷键。
+    pub ctrl_wheel_font_zoom: bool,
     /// Enabled by default; explicit theme mode follows the selected theme.
     pub ligatures: Ligatures,
     pub cursor_shape: Option<CursorShapeName>,
     pub cursor_blink: Option<bool>,
+    pub cursor_motion: CursorMotion,
     pub copy_on_select: bool,
     /// Maximum retained history for new terminals, without altering open sessions.
     pub scrollback_lines: usize,
@@ -1146,12 +1152,17 @@ impl RuntimeSettings {
             ui_font_family: raw.value("ui_font_family").map(str::to_owned),
             ui_font_size_px: raw.f32("ui_font_size").map(|size| size.clamp(10.0, 24.0)),
             font_size_px: raw.f32("font_size").map(|size| size.clamp(4.0, 96.0)),
+            ctrl_wheel_font_zoom: raw.bool_on("ctrl_wheel_font_zoom").unwrap_or(true),
             ligatures: raw
                 .value("ligatures")
                 .and_then(Ligatures::from_settings)
                 .unwrap_or_default(),
             cursor_shape: raw.value("cursor_shape").and_then(CursorShapeName::from_settings),
             cursor_blink: raw.bool_on("cursor_blink"),
+            cursor_motion: raw
+                .value("cursor_motion")
+                .and_then(CursorMotion::from_settings)
+                .unwrap_or_default(),
             copy_on_select: raw.bool_on("copy_on_select").unwrap_or(false),
             scrollback_lines: scrolling::scrollback_lines(raw),
             scroll_speed: normalize_scroll_speed(
@@ -1233,7 +1244,7 @@ impl RuntimeSettings {
             background_image_cover_chrome: raw
                 .bool_on("background_image_cover_chrome")
                 .unwrap_or(false),
-            panel_resize: raw.bool_on("panel_resize").unwrap_or(false),
+            panel_resize: raw.bool_on("panel_resize").unwrap_or(true),
             sidebar_width: raw
                 .f32("sidebar_w")
                 .map(|width| width.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH))
@@ -1552,7 +1563,10 @@ mod tests {
         assert_eq!(settings.background, None);
         assert_eq!(settings.theme_foreground, None);
         assert_eq!(settings.custom_theme, None);
-        assert!(!settings.panel_resize);
+        assert!(settings.panel_resize);
+        assert!(
+            !RuntimeSettings::from_raw(&RawSettings::from_text("panel_resize=0\n")).panel_resize
+        );
         assert_eq!(settings.sidebar_width, DEFAULT_SIDEBAR_WIDTH);
         assert_eq!(settings.ssh_proxy_mode, ProxyModeName::Off);
         assert_eq!(settings.quick_terminal_hotkey, DEFAULT_QUICK_TERMINAL_HOTKEY);
@@ -1601,6 +1615,22 @@ mod tests {
         let enabled = apply_updates(&disabled, &[("ai_toasts", "1".to_owned())]);
         assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&enabled)).ai_toasts);
         assert_eq!(enabled.matches("ai_toasts=").count(), 1);
+    }
+
+    #[test]
+    fn ctrl_wheel_font_zoom_defaults_on_and_accepts_all_boolean_spellings() {
+        assert!(RuntimeSettings::from_raw(&RawSettings::default()).ctrl_wheel_font_zoom);
+        for value in ["", "invalid", "1", "true", "YES", "On"] {
+            let raw = RawSettings::from_text(&format!("ctrl_wheel_font_zoom={value}\n"));
+            assert!(RuntimeSettings::from_raw(&raw).ctrl_wheel_font_zoom, "{value:?}");
+        }
+        for value in ["0", "false", "NO", "Off"] {
+            let raw = RawSettings::from_text(&format!("ctrl_wheel_font_zoom={value}\n"));
+            let settings = RuntimeSettings::from_raw(&raw);
+            assert!(!settings.ctrl_wheel_font_zoom, "{value:?}");
+            assert_eq!(settings.bell, BellModeName::Both);
+            assert!(settings.font_size_px.is_none());
+        }
     }
 
     #[test]

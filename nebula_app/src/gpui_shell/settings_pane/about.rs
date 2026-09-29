@@ -8,6 +8,31 @@ impl SettingsPane {
         url: String,
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
+        Self::about_row(id, icon, title, IconName::ExternalLink, cx)
+            .on_click(move |_, _, cx| cx.open_url(&url))
+            .into_any_element()
+    }
+
+    /// 与外链行同一条骨架，尾标是「进入页面」而不是「离开应用」。
+    pub(super) fn about_page_row(
+        id: &'static str,
+        icon: IconName,
+        title: &'static str,
+        on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        Self::about_row(id, icon, title, IconName::ChevronRight, cx)
+            .on_click(on_click)
+            .into_any_element()
+    }
+
+    fn about_row(
+        id: &'static str,
+        icon: IconName,
+        title: &'static str,
+        trailing: IconName,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
         let muted = cx.theme().muted_foreground;
         let hover = cx.theme().list_hover;
         h_flex()
@@ -21,11 +46,9 @@ impl SettingsPane {
             .rounded_md()
             .cursor_pointer()
             .hover(move |row| row.bg(hover))
-            .on_click(move |_, _, cx| cx.open_url(&url))
             .child(Icon::new(icon).small().text_color(muted))
             .child(div().flex_1().min_w_0().child(title))
-            .child(Icon::new(IconName::ExternalLink).xsmall().text_color(muted))
-            .into_any_element()
+            .child(Icon::new(trailing).xsmall().text_color(muted))
     }
 
     pub(super) fn about_value_row(
@@ -46,6 +69,8 @@ impl SettingsPane {
 
     pub(super) fn section_home(&mut self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
         let language = crate::gpui_shell::config::ui_language(cx);
+        let distribution = crate::platform::distribution::current();
+        let managed = distribution.externally_managed();
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let ink = theme.foreground;
@@ -54,11 +79,12 @@ impl SettingsPane {
         let danger = theme.danger;
         let base_px = self.font_size_px(cx);
         let cached_update = crate::update_download::cached_asset().filter(|asset| {
-            crate::update_check::is_newer(&asset.version, env!("CARGO_PKG_VERSION"))
-                || matches!(
-                    crate::update_download::status(asset),
-                    crate::update_download::DownloadStatus::InstallFailed(_)
-                )
+            !managed
+                && (crate::update_check::is_newer(&asset.version, env!("CARGO_PKG_VERSION"))
+                    || matches!(
+                        crate::update_download::status(asset),
+                        crate::update_download::DownloadStatus::InstallFailed(_)
+                    ))
         });
         let checking = matches!(self.about_update, AboutUpdateState::Checking);
         let (status, status_color): (SharedString, Hsla) = match &self.about_update {
@@ -81,14 +107,21 @@ impl SettingsPane {
                 danger,
             ),
         };
+        let (status, status_color) = if managed {
+            (language.text(crate::i18n::Message::UpdateManagedLabel).into(), muted)
+        } else {
+            (status, status_color)
+        };
         let update_button = NebulaButton::new("about-check-updates")
-            .label(if checking {
+            .label(if managed {
+                language.text(crate::i18n::Message::UpdateManagedLabel)
+            } else if checking {
                 language.pick("正在检查…", "Checking...")
             } else {
                 language.pick("检查更新", "Check for updates")
             })
             .primary()
-            .disabled(checking)
+            .disabled(checking || managed)
             .on_click(cx.listener(|this, _, window, cx| this.check_for_updates(window, cx)));
 
         let status_badge = h_flex()
@@ -208,26 +241,34 @@ impl SettingsPane {
             .flex_1()
             .min_w(px(280.0))
             .child(section_title(language.pick("版本与更新", "Version and updates")))
-            .child(Self::about_value_row(
-                language.pick("自动检查更新", "Automatically check for updates"),
-                auto_update,
-                cx,
-            ))
-            .child(Self::about_value_row(
-                language.text(crate::i18n::Message::UpdateAutoDownload),
-                predownload,
-                cx,
-            ))
+            .when(!managed, |column| {
+                column
+                    .child(Self::about_value_row(
+                        language.pick("自动检查更新", "Automatically check for updates"),
+                        auto_update,
+                        cx,
+                    ))
+                    .child(Self::about_value_row(
+                        language.text(crate::i18n::Message::UpdateAutoDownload),
+                        predownload,
+                        cx,
+                    ))
+            })
             .child(Self::about_value_row(
                 language.pick("更新通道", "Update channel"),
-                div().text_color(muted).child("Stable"),
+                div().text_color(muted).child(distribution.label()),
                 cx,
             ))
-            .child(Self::about_value_row(
-                language.pick("上次检查", "Last checked"),
-                div().text_color(muted).child(last_checked),
-                cx,
-            ));
+            .when(!managed, |column| {
+                column.child(Self::about_value_row(
+                    language.pick("上次检查", "Last checked"),
+                    div().text_color(muted).child(last_checked),
+                    cx,
+                ))
+            })
+            .when_some(distribution.message(), |column, message| {
+                column.child(div().text_color(muted).child(language.text(message)))
+            });
         let actions = v_flex()
             .flex_1()
             .min_w(px(280.0))
@@ -251,6 +292,13 @@ impl SettingsPane {
                 IconName::BookOpen,
                 language.pick("更新内容", "Release notes"),
                 crate::update_check::RELEASES_PAGE.to_owned(),
+                cx,
+            ))
+            .child(Self::about_page_row(
+                "about-sponsors",
+                IconName::Heart,
+                language.pick("赞助商", "Sponsors"),
+                cx.listener(|this, _, _, cx| this.open_sponsor_page(cx)),
                 cx,
             ));
 

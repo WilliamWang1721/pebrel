@@ -3,11 +3,15 @@ param(
     [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z.-]*$')]
     [string] $Version = 'unreleased',
 
-    [ValidateSet('debug', 'release')]
+    # GPUI 调试构建会从编译机源码目录加载 HLSL，不能作为可分发的便携包。
+    [ValidateSet('release')]
     [string] $Configuration = 'release',
 
     [ValidateSet('NebulaTerminal', 'Pebrel')]
     [string] $PackageBrand = 'Pebrel',
+
+    [ValidateSet('x64', 'arm64')]
+    [string] $Architecture = 'x64',
 
     [switch] $SkipBuild,
     # 与 -SkipBuild 联用：跳过「exe 必须比源码新」的陈旧检查。仅用于脚本
@@ -45,8 +49,8 @@ $cargoTargetRoot = [System.IO.Path]::GetFullPath($TargetDirectory)
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
 $targetRoot = Join-Path $cargoTargetRoot $Configuration
 $stage = Join-Path $outputRoot ".stage-$Version-$PID"
-$zipPath = Join-Path $outputRoot "$PackageBrand-v$Version-windows-x64.zip"
-$temporaryZip = Join-Path $outputRoot ".$PackageBrand-v$Version-windows-x64-$PID.tmp.zip"
+$zipPath = Join-Path $outputRoot "$PackageBrand-v$Version-windows-$Architecture.zip"
+$temporaryZip = Join-Path $outputRoot ".$PackageBrand-v$Version-windows-$Architecture-$PID.tmp.zip"
 
 $manifest = [ordered]@{
     'pebrel.exe'                                     = Join-Path $targetRoot 'pebrel.exe'
@@ -155,6 +159,8 @@ if ($missing.Count -ne 0) {
 }
 
 $packagedExe = $manifest['pebrel.exe']
+. (Join-Path $PSScriptRoot 'windows-package-architecture.ps1')
+Assert-WindowsPackageArchitecture -Root $targetRoot -Architecture $Architecture
 Assert-FreshBinaries
 if ($PackageBrand -eq 'Pebrel' -and (Get-Item -LiteralPath $packagedExe).VersionInfo.ProductName -ne 'Pebrel') {
     throw 'Pebrel packages require a freshly built Pebrel executable, not renamed Nebula binaries.'

@@ -42,6 +42,7 @@ pub(crate) const fn effective_cursor_blink(configured: Option<bool>) -> bool {
 pub struct Settings {
     /// 已解析的界面语言。GPUI 组件只读这个内存全局，渲染路径不得重复读盘。
     pub ui_language: UiLanguage,
+    pub panel_resize: bool,
     pub font_family: String,
     pub font_cjk: Option<[gpui::Font; 4]>,
     pub font_bold_family: String,
@@ -53,6 +54,8 @@ pub struct Settings {
     /// 配置文件的基准字号，不含设置页/Ctrl+滚轮持久化的终端缩放。
     /// 启动窗口按它定形，和旧壳的 `window_size` 契约一致。
     pub base_font_size_px: f32,
+    /// Ctrl+滚轮缩放终端字号。默认开启；关闭时终端消费整个手势而不缩放。
+    pub ctrl_wheel_font_zoom: bool,
     pub ui_font_size_px: f32,
     pub(crate) ui_font_family: Option<String>,
     pub(crate) ui_font_size_override: Option<f32>,
@@ -115,6 +118,14 @@ impl Global for Settings {}
 /// 回调若尚未注册则回退英文，不能为取语言把磁盘 I/O 带进渲染路径。
 pub(crate) fn ui_language(cx: &App) -> UiLanguage {
     cx.try_global::<Settings>().map(|settings| settings.ui_language).unwrap_or(UiLanguage::EnUs)
+}
+
+pub(crate) fn panel_resize(cx: &App) -> bool {
+    cx.try_global::<Settings>().is_some_and(|settings| settings.panel_resize)
+}
+
+pub(crate) fn ctrl_wheel_font_zoom(cx: &App) -> bool {
+    cx.try_global::<Settings>().is_none_or(|settings| settings.ctrl_wheel_font_zoom)
 }
 
 pub(crate) fn ai_toasts_enabled(cx: &App) -> bool {
@@ -248,6 +259,7 @@ impl Settings {
 
         Settings {
             ui_language,
+            panel_resize: runtime.panel_resize,
             font_bold_family: secondary(&raw.font.bold),
             font_italic_family: secondary(&raw.font.italic),
             font_bold_italic_family: secondary(&raw.font.bold_italic),
@@ -256,6 +268,7 @@ impl Settings {
                 .ligatures
                 .enabled(resolved_theme.typography().map(|typography| typography.ligatures)),
             base_font_size_px,
+            ctrl_wheel_font_zoom: runtime.ctrl_wheel_font_zoom,
             ui_font_size_px: runtime.ui_font_size_px.unwrap_or(base_font_size_px),
             ui_font_family: runtime.ui_font_family.clone(),
             ui_font_size_override: runtime.ui_font_size_px,
@@ -790,6 +803,39 @@ mod tests {
     fn explicit_runtime_languages_resolve_without_reading_system_locale() {
         assert_eq!(resolve_ui_language(LanguagePref::ZhCn), UiLanguage::ZhCn);
         assert_eq!(resolve_ui_language(LanguagePref::EnUs), UiLanguage::EnUs);
+    }
+
+    #[cfg(feature = "gpui-test-support")]
+    #[gpui::test]
+    fn render_preferences_read_current_settings(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            for (theme, language, panel_resize) in [
+                (ThemeName::Nord, UiLanguage::ZhCn, false),
+                (ThemeName::Paper, UiLanguage::EnUs, true),
+            ] {
+                let mut runtime = RuntimeSettings::from_raw(&RawSettings::default());
+                runtime.panel_resize = panel_resize;
+                let mut settings = Settings::load_with_runtime(theme, runtime);
+                settings.ui_language = language;
+                cx.set_global(settings);
+                assert_eq!(super::ui_language(cx), language);
+                assert_eq!(super::panel_resize(cx), panel_resize);
+            }
+        });
+    }
+
+    #[cfg(feature = "gpui-test-support")]
+    #[gpui::test]
+    fn ctrl_wheel_font_zoom_reads_current_settings(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            assert!(super::ctrl_wheel_font_zoom(cx));
+            for zoom_enabled in [false, true] {
+                let mut runtime = RuntimeSettings::from_raw(&RawSettings::default());
+                runtime.ctrl_wheel_font_zoom = zoom_enabled;
+                cx.set_global(Settings::load_with_runtime(ThemeName::Nebula, runtime));
+                assert_eq!(super::ctrl_wheel_font_zoom(cx), zoom_enabled);
+            }
+        });
     }
 
     #[test]

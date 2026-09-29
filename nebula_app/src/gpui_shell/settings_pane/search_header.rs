@@ -56,7 +56,7 @@ impl SettingsPane {
                     .cleanable(true)
                     .prefix(
                         Icon::new(IconName::Search)
-                            .xsmall()
+                            .size(px(SETTINGS_NAV_ICON_SIZE))
                             .text_color(cx.theme().muted_foreground),
                     )
                     .aria_label(language.pick("在全部设置中搜索", "Search all settings")),
@@ -189,6 +189,8 @@ mod tests {
         assert_eq!(matching_sections("clod backup", en), vec![9]);
         assert_eq!(matching_sections("webdav", en), vec![9]);
         assert_eq!(matching_sections("123", zh), vec![9]);
+        assert_eq!(matching_sections("手机", zh), vec![MOBILE_SECTION]);
+        assert_eq!(matching_sections("pairing", en), vec![MOBILE_SECTION]);
         assert_eq!(matching_sections("透度", zh).first(), Some(&1));
         assert!(matching_sections("no such setting", en).is_empty());
         assert_eq!(matching_sections("", en), visible_nav_sections().collect::<Vec<_>>());
@@ -201,6 +203,15 @@ mod tests {
         {
             for language in [crate::display::UiLanguage::ZhCn, crate::display::UiLanguage::EnUs] {
                 assert_eq!(matching_sections(query, language), vec![2], "{query}");
+            }
+        }
+    }
+
+    #[test]
+    fn ctrl_wheel_zoom_search_opens_the_terminal_appearance_controls() {
+        for query in ["滚轮", "ctrl wheel", "zoom"] {
+            for language in [crate::display::UiLanguage::ZhCn, crate::display::UiLanguage::EnUs] {
+                assert_eq!(matching_sections(query, language), vec![1], "{query}");
             }
         }
     }

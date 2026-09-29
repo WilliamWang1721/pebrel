@@ -58,11 +58,13 @@ mod initialization;
 mod keymap;
 mod launcher_actions;
 mod localization;
+mod mobile;
 mod navigation;
 mod notifications;
 mod shell_picker;
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod shell_picker_tests;
+mod sponsor;
 mod status;
 mod theme_advanced;
 mod theme_editor;
@@ -104,6 +106,7 @@ pub struct SettingsPane {
     /// 当前分区（`SECTIONS` 下标）；默认落在应用主页。
     active_section: usize,
     agents: agents::AgentSettingsState,
+    mobile: mobile::MobileState,
     appearance_picker: Option<appearance_picker::AppearancePicker>,
     appearance_picker_seq: u64,
     pub(super) theme_editor: Option<theme_editor::ThemeEditor>,
@@ -115,6 +118,8 @@ pub struct SettingsPane {
     about_update: AboutUpdateState,
     about_update_seq: u64,
     about_last_checked: Option<String>,
+    /// 首页「项目与支持」→ 赞助商：独立页面，不是外链行。切换分区时清掉。
+    about_sponsor_open: bool,
     settings_search_input: Entity<InputState>,
     search_origin_section: Option<usize>,
     /// 每项还带着自己的 `values` 表：`SelectState` 只认索引，而从代码侧
@@ -324,10 +329,7 @@ impl SettingsPane {
         }
         self.settings_search_input.update(cx, |state, cx| {
             state.set_placeholder(
-                language.pick(
-                    "搜索全部设置，例如「字号」「透明度」「更新」",
-                    "Search all settings, e.g. font, opacity, update",
-                ),
+                language.text(crate::i18n::Message::CommonSearchSettings),
                 window,
                 cx,
             )
@@ -742,6 +744,7 @@ impl SettingsPane {
             "powerline" => flag!(powerline),
             "ghost" => flag!(ghost),
             "ai_toasts" => flag!(ai_toasts),
+            "ctrl_wheel_font_zoom" => flag!(ctrl_wheel_font_zoom),
             "notification_duration" => pick!(notification_duration),
             "cjk_bold_regular" => flag!(cjk_bold_regular),
             "fetch" => flag!(fetch),
@@ -1295,17 +1298,19 @@ impl SettingsPane {
                 .into_any_element();
         }
         match self.active_section {
+            0 if self.about_sponsor_open => self.section_sponsor(cx),
             0 => self.section_home(window, cx),
             1 => self.section_appearance(window, cx),
             2 => self.section_profiles(window, cx),
             3 => self.section_providers(cx),
-            4 => self.section_ssh(cx),
+            4 => self.section_ssh(window, cx),
             5 => self.section_network(cx),
             6 => self.section_interaction(cx),
             7 => self.section_keymap(cx),
             8 => self.section_advanced(cx),
             10 => self.section_agents(cx),
-            _ => self.section_backup(cx),
+            MOBILE_SECTION => self.section_mobile(window, cx),
+            _ => self.section_backup(window, cx),
         }
         .into_any_element()
     }
@@ -1331,7 +1336,7 @@ impl SettingsPane {
             .px_2()
             .pt(px(12.0))
             .pb(px(8.0))
-            .gap(px(4.0))
+            .gap(px(2.0))
             .text_sm()
             .line_height(px(20.0))
             .border_r_1()
@@ -1355,7 +1360,14 @@ impl SettingsPane {
                     .child(language.pick("返回工作区", "Back to workspace")),
             )
             .child(self.render_nav_search(window, cx));
+        let searching = !self.settings_search_input.read(cx).value().trim().is_empty();
+        let mut previous_group = None;
         for ix in self.matching_settings_sections(cx) {
+            let group = NAV_GROUPS.iter().position(|(_, sections)| sections.contains(&ix));
+            if !searching && previous_group.is_some() && previous_group != group {
+                nav = nav.child(div().h(px(10.0)).flex_shrink_0());
+            }
+            previous_group = group;
             let active = ix == self.active_section;
             nav = nav.child(
                 div()
@@ -1366,7 +1378,7 @@ impl SettingsPane {
                     .h(px(SETTINGS_NAV_ROW_HEIGHT))
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(px(10.0))
                     .rounded_md()
                     .cursor_pointer()
                     // 选中态同时改变底色、墨色和字重，余光扫过也能确认当前位置。
@@ -1379,6 +1391,7 @@ impl SettingsPane {
                     .when(!active, |item| item.text_color(muted).hover(|s| s.bg(hover_bg)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.active_section = ix;
+                        this.about_sponsor_open = false;
                         cx.notify();
                     }))
                     .child(
@@ -1435,7 +1448,10 @@ impl Render for SettingsPane {
         let appearance_picker_modal = self.appearance_picker_modal(window, cx);
         let theme_editor_modal = self.theme_editor_modal(window, cx);
         let theme_transfer_modal = self.theme_transfer_modal(window, cx);
+        let backup_drawer = self.backup_drawer(window, cx);
+        let mobile_relay_modal = self.mobile_relay_modal(cx);
         let application_page = self.active_section == 0;
+        let mobile_page = self.active_section == MOBILE_SECTION;
 
         div()
             .size_full()
@@ -1502,6 +1518,7 @@ impl Render for SettingsPane {
                             .pt(px(20.0))
                             .pb(px(22.0))
                             .when(!application_page, |content| content.pt(px(28.0)).pb(px(30.0)))
+                            .when(mobile_page, |content| content.p_0())
                             // 注意这层包装 `v_flex` 的 `w_full` 不能删（2026-08-23
                             // 又栽了一次）：`overflow_y_scrollbar` 把内容层清成
                             // `Display::Block`，而 flex 容器在 block 父里
@@ -1536,14 +1553,24 @@ impl Render for SettingsPane {
                                     .w_full()
                                     .flex()
                                     .justify_center()
-                                    .child(v_flex().w_full().when(application_page, |content| content.max_w(px(960.0))).child(content)),
+                                    .child(
+                                        v_flex()
+                                            .w_full()
+                                            .when(matches!(self.active_section, 4 | 9 | 10 | MOBILE_SECTION), |content| {
+                                                content.items_center()
+                                            })
+                                            .when(application_page, |content| content.max_w(px(960.0)))
+                                            .child(content),
+                                    ),
                             ),
                     ),
             )
+            .when_some(backup_drawer, |root, drawer| root.child(drawer))
             .when_some(ssh_editor_modal, |root, modal| root.child(modal))
             .when_some(appearance_picker_modal, |root, modal| root.child(modal))
             .when_some(theme_editor_modal, |root, modal| root.child(modal))
             .when_some(theme_transfer_modal, |root, modal| root.child(modal))
+            .when_some(mobile_relay_modal, |root, modal| root.child(modal))
             .when(font_picker_open, |root| {
                 root
                     // 搜索框是当前焦点时 Escape 仍沿元素树冒泡到设置根；

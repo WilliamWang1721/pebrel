@@ -1,4 +1,4 @@
-//! Two-phase Windows installation handoff and the resulting restore ticket.
+//! Two-phase platform installation handoff and the resulting restore ticket.
 //! Files under one transaction are durable evidence; only commit authorizes setup.
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
@@ -7,9 +7,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::platform::update_installation::{canonical, current_process_created, spawn_helper};
+use crate::platform::update_installation::{canonical, current_process_created};
 use crate::session::Session;
 use crate::update_check::UpdateAsset;
+
+#[cfg(target_os = "macos")]
+pub(crate) mod macos;
 
 struct ActiveRestore {
     directory: PathBuf,
@@ -70,6 +73,9 @@ impl Drop for PreparedUpdate {
         if !self.committed {
             let _ = crate::atomic_file::write(&self.directory.join("cancel.json"), b"{}");
             // This is our own uncommitted helper; it has no authority to install.
+            if crate::platform::Platform::current() == crate::platform::Platform::MacOS {
+                return;
+            }
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
@@ -80,18 +86,23 @@ fn guard_base(executable: &Path) -> PathBuf {
     // All configurations of the same installed binary share this lock. A
     // settings-directory override must not bypass an installation in progress.
     // The installer never replaces or deletes this reserved sidecar.
-    executable.parent().expect("canonical executable has a parent").join(".pebrel-update")
+    crate::platform::update_installation::guard_base(executable)
 }
 
 /// Called before starting any resident resources. The lock belongs to the exact
 /// installation; a copied test/portable application has a different identity.
 pub(crate) fn installation_in_progress() -> io::Result<bool> {
+    // MSIX 包目录只读，外部渠道也不参与普通安装器事务，因此不创建旁置锁。
+    if crate::platform::distribution::current().externally_managed() {
+        return Ok(false);
+    }
     let executable = canonical(&std::env::current_exe()?)?;
     Ok(crate::atomic_file::try_lifetime_lock(&guard_base(&executable))?.is_none())
 }
 
 /// All verification and process waiting occurs on a background executor.
 pub(crate) fn prepare(asset: &UpdateAsset) -> Result<PreparedUpdate, String> {
+    crate::platform::distribution::require_direct_update()?;
     if crate::platform::elevation::requires_isolation() {
         return Err(
             "Install updates from an ordinary Pebrel window so privileged sessions stay isolated"
@@ -104,10 +115,7 @@ pub(crate) fn prepare(asset: &UpdateAsset) -> Result<PreparedUpdate, String> {
     let installer = super::ready_path(asset)?;
     let executable = canonical(&std::env::current_exe().map_err(|error| error.to_string())?)
         .map_err(|error| error.to_string())?;
-    let installation = executable.parent().ok_or("Application directory is missing")?.to_owned();
-    if !installation.join("unins000.exe").is_file() {
-        return Err("This copy is portable. Use the download page to replace its package.".into());
-    }
+    let installation = crate::platform::update_installation::installation_directory(&executable)?;
     let transaction = format!(
         "{}-{}",
         std::process::id(),
@@ -116,7 +124,13 @@ pub(crate) fn prepare(asset: &UpdateAsset) -> Result<PreparedUpdate, String> {
     let directory = nebula_settings::settings_dir().join("updates/handoffs").join(&transaction);
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     // Detect an unwritable target while all windows are still available.
-    let probe = installation.join(format!(".pebrel-update-{transaction}"));
+    let probe_directory =
+        if crate::platform::Platform::current() == crate::platform::Platform::MacOS {
+            installation.parent().ok_or("Missing application parent")?
+        } else {
+            &installation
+        };
+    let probe = probe_directory.join(format!(".pebrel-update-{transaction}"));
     let probe_file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -153,12 +167,15 @@ pub(crate) fn prepare(asset: &UpdateAsset) -> Result<PreparedUpdate, String> {
         &serde_json::to_vec(&plan_path).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    let helper = directory.join("handoff.ps1");
-    crate::atomic_file::write(&helper, include_bytes!("handoff.ps1"))
-        .map_err(|error| error.to_string())?;
-    let child = spawn_helper(&helper, &plan_path).map_err(|error| error.to_string())?;
+    let child =
+        crate::platform::update_installation::spawn_prepared_helper(&directory, &plan_path)?;
     let mut prepared = PreparedUpdate { directory, transaction, child, committed: false };
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let timeout = if crate::platform::Platform::current() == crate::platform::Platform::MacOS {
+        600
+    } else {
+        30
+    };
+    let deadline = Instant::now() + Duration::from_secs(timeout);
     loop {
         if prepared.child.try_wait().map_err(|error| error.to_string())?.is_some() {
             let result = read_json::<serde_json::Value>(&prepared.directory.join("result.json"))
@@ -293,6 +310,7 @@ pub(super) fn failure_unseen(prompt_state: &Path) -> bool {
 }
 
 pub(crate) fn schedule(asset: &UpdateAsset) -> Result<(), String> {
+    crate::platform::distribution::require_direct_update()?;
     if crate::platform::elevation::requires_isolation() {
         return Err("Schedule updates from an ordinary Pebrel window".into());
     }
@@ -311,6 +329,9 @@ pub(crate) fn schedule(asset: &UpdateAsset) -> Result<(), String> {
 /// Before resident resources/windows exist, apply an explicitly armed update.
 /// A failed attempt is disarmed and normal startup remains available.
 pub(crate) fn apply_scheduled() -> bool {
+    if crate::platform::distribution::current().externally_managed() {
+        return false;
+    }
     let path = nebula_settings::settings_dir().join("updates/install-next.json");
     let Some(asset) = read_json::<UpdateAsset>(&path) else {
         return false;
@@ -335,3 +356,6 @@ pub(crate) fn apply_scheduled() -> bool {
         },
     }
 }
+
+#[cfg(test)]
+mod tests;

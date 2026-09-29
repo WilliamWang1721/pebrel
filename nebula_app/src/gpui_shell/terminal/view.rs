@@ -6,6 +6,7 @@ mod agent_activity;
 mod broadcast;
 mod completion;
 mod confirmation;
+mod conversation;
 mod cwd_report;
 mod image_paste;
 mod layout;
@@ -402,7 +403,7 @@ pub struct TerminalView {
     selection_scroll_epoch: u64,
     /// 是否已有一条自动回滚定时器链在跑——每次 move 都开一条会叠出 N 倍速。
     selection_scroll_active: bool,
-    /// OSC 8 / 正则 URL：虚线下划线、悬停预览、Ctrl+点击打开。
+    /// OSC 8 / 正则 URL：虚线下划线、悬停预览、平台修饰键+点击打开。
     pub(super) hint_config: Arc<UiConfig>,
     pub(super) link_hover: Option<super::osc_links::LinkHover>,
     pending_link_open: bool,
@@ -493,6 +494,13 @@ impl TerminalView {
     /// 影响最终能容纳的行列数。否则放大一级就会把 116 列全部加到窗宽上。
     pub fn startup_cell_metrics(window: &Window, cx: &App) -> (Pixels, Pixels) {
         typography::startup_cell_metrics(window, cx)
+    }
+
+    pub(in crate::gpui_shell) fn startup_cell_metrics_at_scale(
+        scale: f32,
+        cx: &App,
+    ) -> (Pixels, Pixels) {
+        typography::startup_cell_metrics_at_scale(scale, cx)
     }
 
     pub(in crate::gpui_shell) fn set_output_visible(

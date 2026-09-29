@@ -151,3 +151,245 @@ fn hover_does_not_steal_focus_during_drag_overlay_dialog_or_inactive_window(
     move_over(&mut cx, None);
     assert_eq!(probe.read_with(&cx, |probe, _| probe.requests.get()), 0);
 }
+
+fn link_modifiers() -> Modifiers {
+    match crate::platform::Platform::current() {
+        crate::platform::Platform::MacOS => Modifiers { platform: true, ..Modifiers::default() },
+        _ => Modifiers { control: true, ..Modifiers::default() },
+    }
+}
+
+fn link_fixture(
+    cx: &mut TestAppContext,
+    text: &[u8],
+) -> (Entity<TerminalView>, VisualTestContext, std::sync::mpsc::Receiver<Msg>) {
+    cx.update(crate::gpui_shell::math_view::register);
+    let (probe, mut cx) = open(cx);
+    let terminal = probe.read_with(&cx, |probe, _| probe.terminal.clone());
+    let receiver = terminal.update(&mut cx, |view, cx| {
+        let (session, receiver) = session::test_session();
+        view.session = Some(session);
+        view.error = None;
+        view.exited = None;
+        view.copy_on_select = false;
+        // Use the production matcher and dispatcher with a deterministic action;
+        // tests must not launch a user's browser or editor.
+        let mut config = UiConfig::default();
+        Arc::make_mut(&mut config.hints.enabled[0]).action =
+            crate::config::ui_config::HintAction::Action(
+                crate::config::ui_config::HintInternalAction::Copy,
+            );
+        view.hint_config = Arc::new(config);
+        super::super::startup_tests::feed(view, text);
+        cx.notify();
+        receiver
+    });
+    draw(&mut cx);
+    cx.update(|_, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string("before".into())));
+    (terminal, cx, receiver)
+}
+
+fn cell(view: &Entity<TerminalView>, cx: &VisualTestContext, col: usize) -> Point<Pixels> {
+    view.read_with(cx, |view, _| {
+        point(
+            view.origin.x + view.cell_width * (col as f32 + 0.5),
+            view.origin.y + view.line_height * 0.5,
+        )
+    })
+}
+
+fn clipboard(cx: &mut VisualTestContext) -> Option<String> {
+    cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+}
+
+#[gpui::test]
+fn link_gesture_opens_regex_files_and_osc8_with_or_without_mouse_reporting(
+    cx: &mut TestAppContext,
+) {
+    for (output, target) in [
+        ("https://example.com", "https://example.com"),
+        ("file:///tmp/pebrel-notes.md", "file:///tmp/pebrel-notes.md"),
+        ("[notes](./notes.md)", "[notes](./notes.md)"),
+        ("\x1b]8;;https://example.com/osc8\x1b\\site\x1b]8;;\x1b\\", "https://example.com/osc8"),
+    ] {
+        for mouse_mode in [false, true] {
+            let output = if mouse_mode {
+                format!("\x1b[?1003h\x1b[?1006h{output}")
+            } else {
+                output.to_owned()
+            };
+            let (view, mut window, receiver) = link_fixture(cx, output.as_bytes());
+            let position = cell(&view, &window, 1);
+            window.simulate_mouse_move(position, None, link_modifiers());
+            assert!(view.read_with(&window, |view, _| view.link_hover.is_some()));
+            window.simulate_mouse_down(position, MouseButton::Left, link_modifiers());
+            assert_eq!(clipboard(&mut window).as_deref(), Some("before"));
+            assert!(view.read_with(&window, |view, _| view.pending_link_open));
+            // Releasing Command/Ctrl first must not send an orphan mouse-up to the TUI.
+            window.simulate_mouse_up(position, MouseButton::Left, Modifiers::default());
+            assert_eq!(clipboard(&mut window).as_deref(), Some(target));
+            assert!(!receiver.try_iter().any(|event| matches!(event, Msg::Input(_))));
+        }
+    }
+}
+
+#[gpui::test]
+fn plain_click_and_wrong_modifier_do_not_open_links(cx: &mut TestAppContext) {
+    let (view, mut window, _) = link_fixture(cx, b"https://example.com");
+    let position = cell(&view, &window, 1);
+    let wrong = if link_modifiers().platform {
+        Modifiers { control: true, ..Modifiers::default() }
+    } else {
+        Modifiers { platform: true, ..Modifiers::default() }
+    };
+    for modifiers in [Modifiers::default(), wrong] {
+        window.simulate_mouse_move(position, None, modifiers);
+        window.simulate_mouse_down(position, MouseButton::Left, modifiers);
+        window.simulate_mouse_up(position, MouseButton::Left, modifiers);
+        assert_eq!(clipboard(&mut window).as_deref(), Some("before"));
+    }
+}
+
+#[gpui::test]
+fn link_drag_cannot_retarget_or_leave_a_pending_open(cx: &mut TestAppContext) {
+    let (view, mut window, _) = link_fixture(cx, b"https://one.test https://two.test");
+    let start = cell(&view, &window, 1);
+    for end in [cell(&view, &window, 20), point(px(10.0), px(10.0))] {
+        window.simulate_mouse_down(start, MouseButton::Left, link_modifiers());
+        window.simulate_mouse_move(end, Some(MouseButton::Left), link_modifiers());
+        window.simulate_mouse_up(end, MouseButton::Left, link_modifiers());
+        assert_eq!(clipboard(&mut window).as_deref(), Some("before"));
+        assert!(!view.read_with(&window, |view, _| view.pending_link_open));
+    }
+}
+
+#[gpui::test]
+fn mouse_reporting_still_receives_ordinary_and_non_link_clicks(cx: &mut TestAppContext) {
+    let (view, mut window, receiver) =
+        link_fixture(cx, b"\x1b[?1000h\x1b[?1006hhttps://example.com plain");
+    for (col, modifiers) in [(1, Modifiers::default()), (22, link_modifiers())] {
+        let position = cell(&view, &window, col);
+        window.simulate_mouse_down(position, MouseButton::Left, modifiers);
+        window.simulate_mouse_up(position, MouseButton::Left, modifiers);
+        let reports: Vec<_> = receiver
+            .try_iter()
+            .filter_map(|event| match event {
+                Msg::Input(bytes) => Some(bytes.into_owned()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reports.len(), 2);
+        assert!(reports[0].ends_with(b"M"));
+        assert!(reports[1].ends_with(b"m"));
+        assert_eq!(clipboard(&mut window).as_deref(), Some("before"));
+    }
+}
+
+#[gpui::test]
+fn link_hover_uses_current_language_and_platform(cx: &mut TestAppContext) {
+    use crate::i18n::UiLanguage;
+    let (view, mut window, _) = link_fixture(cx, b"https://example.com");
+    let position = cell(&view, &window, 1);
+    let modifier = if link_modifiers().platform { "Command" } else { "Ctrl" };
+    for (language, suffix) in [
+        (UiLanguage::ZhCn, "+左键跳转"),
+        (UiLanguage::EnUs, "+left click to open"),
+        (UiLanguage::KoKr, "+왼쪽 클릭으로 열기"),
+    ] {
+        window.update(|_, cx| cx.global_mut::<Settings>().ui_language = language);
+        window.simulate_mouse_move(position, None, Modifiers::default());
+        let preview =
+            view.read_with(&window, |view, _| view.link_hover.as_ref().unwrap().preview.clone());
+        assert!(preview.ends_with(&format!(" · {modifier}{suffix}")), "{preview}");
+        draw(&mut window);
+    }
+}
+
+#[gpui::test]
+fn explicit_link_gesture_respects_disabled_hints_and_required_modifiers(cx: &mut TestAppContext) {
+    let (view, mut window, _) = link_fixture(cx, b"\x1b[?1000hhttps://example.com");
+    let position = cell(&view, &window, 1);
+    for enabled in [false, true] {
+        view.update(&mut window, |view, _| {
+            let config = Arc::make_mut(&mut view.hint_config);
+            let hint = Arc::make_mut(&mut config.hints.enabled[0]);
+            let mouse = hint.mouse.as_mut().unwrap();
+            mouse.enabled = enabled;
+            mouse.mods.0 = winit::keyboard::ModifiersState::SHIFT;
+        });
+        window.simulate_mouse_down(position, MouseButton::Left, link_modifiers());
+        window.simulate_mouse_up(position, MouseButton::Left, link_modifiers());
+        assert_eq!(clipboard(&mut window).as_deref(), Some("before"));
+    }
+    let modifiers = Modifiers { shift: true, ..link_modifiers() };
+    window.simulate_mouse_down(position, MouseButton::Left, modifiers);
+    window.simulate_mouse_up(position, MouseButton::Left, modifiers);
+    assert_eq!(clipboard(&mut window).as_deref(), Some("https://example.com"));
+}
+
+/// 真实终端元素 + 可回滚的历史，滚轮手势才有可观察的落点。
+fn terminal_with_history(cx: &mut TestAppContext) -> (Entity<TerminalView>, VisualTestContext) {
+    let (probe, mut cx) = open(cx);
+    let terminal = probe.read_with(&cx, |probe, _| probe.terminal.clone());
+    terminal.update(&mut cx, |view, cx| {
+        let (session, _receiver) = session::test_session();
+        view.session = Some(session);
+        let mut history = Vec::new();
+        for line in 0..200 {
+            history.extend_from_slice(format!("history-{line}\r\n").as_bytes());
+        }
+        super::super::startup_tests::feed(view, &history);
+        cx.notify();
+    });
+    draw(&mut cx);
+    (terminal, cx)
+}
+
+/// 走真实命中区域派发滚轮：`control` 决定是否按 Ctrl+滚轮解释。
+fn wheel_over_terminal(cx: &mut VisualTestContext, delta_y: f32, control: bool) {
+    let position = cx.debug_bounds("mouse-terminal").unwrap().center();
+    cx.simulate_mouse_move(position, None, Modifiers::default());
+    cx.simulate_event(gpui::ScrollWheelEvent {
+        position,
+        delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(delta_y))),
+        modifiers: Modifiers { control, ..Modifiers::default() },
+        touch_phase: gpui::TouchPhase::Moved,
+    });
+    cx.run_until_parked();
+}
+
+#[gpui::test]
+fn ctrl_wheel_font_zoom_toggle_gates_zoom_and_terminal_scroll(cx: &mut TestAppContext) {
+    use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
+
+    // 缩放会写 `font_size=`：与 theme studio 夹具同一把锁，并原样恢复用户的设置文件。
+    let _fixture_guard = lock_theme_studio();
+    let _guard = SettingsBytesGuard::capture();
+    let (terminal, mut cx) = terminal_with_history(cx);
+    // 从中间字号起步，让 ±1 步远离 4–64 的钳位边界。
+    cx.update(|_, cx| {
+        let settings = cx.global_mut::<Settings>();
+        settings.font_size_px = 15.0;
+        settings.ctrl_wheel_font_zoom = true;
+    });
+
+    // 开启（默认）：Ctrl+滚轮仍然放大字号，且不移动终端回滚位置。
+    wheel_over_terminal(&mut cx, 60.0, true);
+    let zoomed = terminal.read_with(&cx, |view, _| view.font_size);
+    assert!(zoomed > px(15.0), "Ctrl+滚轮应放大字号，实际 {zoomed:?}");
+    assert_eq!(terminal.read_with(&cx, |view, _| view.scroll_state().0), 0);
+
+    // 关闭：放大方向的手势既不改变字号，也不被当成普通滚动消费掉。
+    cx.update(|_, cx| cx.global_mut::<Settings>().ctrl_wheel_font_zoom = false);
+    wheel_over_terminal(&mut cx, 60.0, true);
+    assert_eq!(terminal.read_with(&cx, |view, _| view.font_size), zoomed);
+    assert_eq!(terminal.read_with(&cx, |view, _| view.scroll_state().0), 0);
+    // 缩小方向同样被整体吞掉。
+    wheel_over_terminal(&mut cx, -60.0, true);
+    assert_eq!(terminal.read_with(&cx, |view, _| view.font_size), zoomed);
+    assert_eq!(terminal.read_with(&cx, |view, _| view.scroll_state().0), 0);
+
+    // 关闭开关只影响 Ctrl+滚轮：普通滚轮照旧滚动。
+    wheel_over_terminal(&mut cx, 60.0, false);
+    assert!(terminal.read_with(&cx, |view, _| view.scroll_state().0) > 0);
+}

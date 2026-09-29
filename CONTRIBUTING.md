@@ -74,6 +74,8 @@ raise any existing tracked private artifact for an explicit maintainer decision.
    `architecture/notes/`; ordinary fixes do not create a note.
 2. Keep one conceptual change per PR. A necessary extraction and its behavior
    tests may accompany the feature; unrelated rewrites and formatting may not.
+   The `pr-size` check fails above 1500 changed source lines (docs, lockfiles
+   and assets excluded); split instead of asking for an exemption.
 3. Put shared rules in their existing authority. UI modules adapt those rules;
    they must not fork persistence, state transitions or domain behavior.
 4. Add regression tests that fail for the defect, and test error/cancellation
@@ -105,9 +107,11 @@ cargo check -p nebula --bin pebrel --features gpui-shell --tests --locked
 
 `Full native tests` runs on every PR and merge-group update, and on `main` pushes.
 It tests the full workspace on Linux, Windows x64 / ARM64 and both macOS
-architectures. New commits cancel obsolete PR runs. Package validation has its own
-input filters and can also be dispatched manually; a package job does not replace
-the native test suite. These triggers do not configure required status checks.
+architectures. New commits cancel obsolete PR runs. Pull requests run tests and
+compile checks without building distribution packages. Package validation runs
+after matching changes reach `main`, or by explicit manual dispatch; a package
+job does not replace the native test suite. These triggers do not configure
+required status checks.
 
 GitHub may show **Waiting for approval** for a first-time fork contributor. A
 maintainer must inspect the submitted changes and approve that workflow run from
@@ -122,9 +126,36 @@ compile check into a claim that UI tests or a packaged application were run.
 
 ## Review and enforcement
 
-`architecture-contracts` is the stable PR job name. Maintainers must enable it as
-a required check and require Code Owner approval in the target branch ruleset;
-see the [activation checklist](docs/project-constraints.md#server-side-activation).
+`architecture-contracts`, `lint`, `pr-size`, the five
+`Tests (<os>)` jobs and both `Release workspace (<os>)` jobs are required checks
+on `main`, together with Code Owner approval; see the
+[activation checklist](docs/project-constraints.md#server-side-activation).
+Draft and ready pull requests both run all five native platforms and both macOS
+release-profile compile checks. Each macOS native job also runs its release check
+on the same runner, reusing the checkout, toolchain and source downloads while
+keeping the two compiled workloads in their existing separate caches. The two
+`Release workspace (<os>)` contexts are lightweight Linux result checks: they
+require this run's entire native matrix to succeed, not a previous run's result.
+The release compilation itself still runs natively on each Mac architecture.
+The required lint job validates the event and
+selects the matrix before requesting platform runners. Every required check must
+succeed before merging. Marking a draft ready without changing its commits does
+not repeat the matrix; source updates and reopen events run it again. Native CI
+uses pinned `cargo-nextest` for unit and
+integration tests, followed by `cargo test --doc` with the same workspace features;
+the production feature graph and release workspace are still checked separately.
+Native-test PR jobs restore Cargo caches without uploading merge-ref snapshots. The default branch
+publishes reusable snapshots per dependency/toolchain configuration; a cache hit
+never skips current-commit tests. Downloads are shared between architectures of
+the same OS, while compiled targets remain isolated by architecture and SDK.
+
+Auxiliary UI screenshots must not add a second automatic upstream PR build matrix.
+Keep contributor-owned screenshot builds and publication in the source fork;
+upstream capture needs an explicitly requested run and read-only target-cache
+restoration. Screenshot evidence must identify its source commit and does not
+replace native regression tests. The registered upstream screenshot workflow is
+disabled as recorded in the [cache ownership decision](architecture/notes/scripts/ci/2026-09-28-upstream-screenshot-cache-ownership.md).
+
 Local hooks are convenient, but bypassable; they are not the enforcement boundary.
 Submitting a workflow or `CODEOWNERS` file does not configure server-side rules.
 
@@ -137,6 +168,9 @@ feature work; there is no routine `--skip-architecture` option.
 ## 中文摘要
 
 - 先读架构图、工程合同和决策记录；按职责拆分，不按行号切片。
+- 一个 PR 只做一件事；改动超过 1500 行源码（不计文档、lockfile、资源）`pr-size` 会失败，请拆分。
+- Draft 和 Ready PR 都先运行必需的格式检查和矩阵规划，再执行五平台原生测试及两项 macOS release 编译检查；每个 Mac 在同一 runner 完成两类检查，原有 release 检查名称由轻量结果汇总保留。十项必需检查全绿才能合并，不省略平台或 doctest。
+- 附加截图留在贡献者 fork 中生成；上游按需执行，不重复自动跑整套截图构建，也不上传 PR 专属的大型编译缓存。截图与原生回归测试不能互相替代。
 - 2000 行是现有仓库的防灾上限，800 行只提示审查，不是“大厂标准”。
 - 普通功能 PR 不得增加存量债务；有问题的规则可以修订，但要有反例、测试和维护者审批。
 - 新增核心抽象、依赖方向、持久化或线程模型改变要先说明设计，不强迫每个小修复写 ADR。

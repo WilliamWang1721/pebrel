@@ -4,101 +4,517 @@ Every release entry is provided in English and Simplified Chinese.
 
 每个版本条目均同时提供英文和简体中文说明。
 
-## 1.9.0 - 2026-09-21
+## 2.0.0 - 2026-09-28
+
+### English
+
+Pebrel 2.0 adds phone access to desktop terminals, Agent conversations, files and Git, with tasks continuing on the computer. The Android companion also offers local and direct-SSH terminals. Desktop updates include guided encrypted backup and restore, new automation commands, and improvements to input, rendering, startup and localization.
+
+#### Added
+
+##### Phone connections and desktop access
+
+- **Android companion Preview and connection onboarding.** Start by connecting a computer, adding an SSH host or opening a local terminal. The introduction can be skipped; cancelling a connection form returns to the choices, while completing or skipping the introduction is remembered across launches.
+- **Pair by QR code, short code or complete invitation.** Desktop Settings generates a one-use invitation valid for ten minutes. On a discoverable local network, an eight-digit code offers another way to retrieve the invitation; scanning and pasting remain available when discovery is restricted.
+- **Desktop-approved pairing.** Compare the verification code on both devices and approve the connection on the computer. Each paired phone receives an independent credential for subsequent connections.
+- **LAN and self-hosted relay connection choices.** Connect directly to a reachable LAN or Tailscale address, or configure a self-hosted relay for use across networks. Phone-to-computer application traffic is end-to-end encrypted; a relay forwards that encrypted traffic rather than processing terminal content.
+- **Per-phone access management.** See paired devices and their connection state, choose view-only or input access, and revoke an individual device. Pausing Phone Remote disconnects sessions while retaining enrolled devices for later use; closing Settings leaves active phone connections running.
+- **Self-hosted relay management from the phone.** Use SSH to install, inspect, start, stop or uninstall the native relay on supported Linux systemd/OpenRC hosts. Setup reports actual stages and readiness. The desktop can import relay connection details from a file or clipboard, or read them from a saved SSH host.
+- **Desktop workspace navigation.** Browse the computer's windows, tabs and panes from the phone. With the corresponding permission, switch or close tabs, create terminals and open files directly in the existing desktop workspace.
+- **Online task notifications.** Receive system notifications for desktop task completion and requests for attention while connected. Android also offers an explicit foreground-service option for keeping active connections in the background, with a persistent notification and an entry to system notification settings.
+
+##### Android terminals and command input
+
+- **On-device local terminals.** Open an Android shell with an application-owned home directory, independently of a desktop connection. Available commands follow the device environment.
+- **Direct SSH terminal sessions.** Save hosts, connect with password or server-approved passwordless authentication, confirm new host fingerprints and see the actual connection stage. Available session modes also support attaching to compatible session tools already installed on the server.
+- **Compose and direct-input modes.** Compose a multiline draft locally before sending it, or switch to direct terminal input. Drafts belong to their session and are cleared only after an acknowledged submission, so switching views does not silently submit or discard unfinished text.
+- **Touch-accessible terminal keys.** The command toolbar provides Ctrl+C, Escape, Tab, arrow keys and keyboard controls. Keys sent to the computer use the target terminal's input mode.
+- **Session command history.** Reuse previous submissions from the composer and filter suggestions as you type. Selecting a suggestion fills the draft; execution still requires an explicit send action. Suggestions can be disabled in Settings.
+- **File attachments for local and direct-SSH terminals.** Select a file through Android's document picker, import or upload it, and insert its quoted path into the composer. The path is added to a draft rather than executed as a shell command; this attachment path accepts files up to 16 MiB.
+- **Optional on-device voice input.** Download the speech model, then hold to record and transcribe into an editable draft on the device. Sending remains a separate action. The model can be removed, and leaving the recording view stops recording.
+
+##### Conversations, documents and remote files
+
+- **A conversation view for an existing Agent session.** Read supported Codex and Claude native messages from the desktop session, including user messages, replies and tool results. Switching between terminal and conversation views keeps the same running CLI and context rather than launching another Agent.
+- **Interactive confirmation choices.** Answer the current session's recognized questions and expand or collapse tool results. Buttons correspond to that specific question, keeping ordinary numbered text separate from actionable choices.
+- **Color terminal output on the phone.** Desktop screen snapshots preserve text colors, background colors, styles, wide and combining characters, and cursor placement. The phone reads the live screen even when the desktop user is looking at an older scrollback position.
+- **Phone-width terminal reflow.** Rewrap supported desktop screen rows to fit the phone without resizing the computer's PTY or changing its layout. A switch retains the original grid presentation for fixed-layout terminal applications.
+- **Desktop file tabs on the phone.** Read supported text, Markdown and image files in dedicated tabs. If a file changes during loading, the reader reports the change instead of mixing content from different revisions.
+- **SFTP browsing and transfers in direct SSH sessions.** Browse paged directories, create folders, rename or delete entries, upload files and download through Android's file picker. The SFTP browser shares the authenticated SSH connection while using a separate file channel; closing a file tab leaves the terminal session open.
+- **A shared offline document reader.** Desktop files, SFTP files and Agent messages use the same reading components. Markdown includes tables, task lists, strikethrough, syntax-highlighted code, inline/display math and Mermaid diagrams, with rendering libraries and fonts bundled locally rather than fetched from a CDN when opening a document.
+- **Document navigation, copying and image inspection.** Follow supported relative links into file tabs, open external links through the system, copy original code without line numbers or fences, and zoom or reset an image in its own viewer. Copy actions provide visible feedback without inserting extra space into the document.
+
+##### Git from the connected workspace
+
+- **Repository browsing on the phone.** View changed files, staged and unstaged differences, branch information and paged commit history for the selected desktop pane's working directory. Open file and commit diffs directly in the Git view.
+- **Git operations.** Stage or unstage changes, commit, fetch, pull and push. Sync runs fetch, fast-forward-only pull and push in order, retaining the record of completed steps if a later step fails. Writes require input permission and a current repository snapshot; uncertain results are not automatically retried.
+
+##### Encrypted backup and restore
+
+- **A guided Backup and Restore page.** The desktop setup flow walks through storage selection, connection checking, a backup password and content selection. Configure an existing folder, WebDAV location, S3-compatible bucket or a remote directory on a saved SSH host.
+- **Per-backup content selection.** Choose appearance, terminal and assistant settings, SSH host profiles, workspace layout, imported fonts and history categories. The interface shows the selected content size and remembers the selection after a successful backup.
+- **Encrypt before storing or uploading.** Backup archives are encrypted on the computer. SSH private keys and secrets from the system credential store are excluded; command history is a separate selectable category. The backup password is retained only for the current application run, not written into the saved configuration.
+- **Portable archive import and export.** Export selected contents as a `.pebrel-backup` file for copying to another computer, or import and unlock an archive with its backup password. Remote storage is optional for this file-based workflow.
+- **Selective restore with undo.** Authenticate and inspect an archive before choosing what to restore. Unselected items remain unchanged. A local encrypted recovery copy preserves the previous files, including whether a file existed, so the restore can be undone from the current Settings session.
+
+##### Automation and desktop options
+
+- **Name individual split panes.** Double-click a pane title to name it; Enter or focus loss saves, Escape cancels, and clearing the name restores the automatic title. Names follow panes across moves and session restoration.
+
+- **Expanded Runtime API.** Automation clients can target tabs by stable identifiers, open and read supported file tabs, retrieve terminal screen snapshots, read supported Agent conversations and perform scoped Git operations. Existing plain-text terminal reads remain available.
+- **Native and Lua plugin commands.** `pebrel plugin check` validates a local command package; `pebrel plugin run` executes one declared Runtime request or Lua handler and returns a structured result. Commands run on demand: native requests skip Lua initialization, and Lua invocations release their VM on completion. This release covers command plugins, not resident plugin panels.
+- **A switch for Ctrl+wheel font zoom.** Settings → Appearance → Terminal appearance can disable the gesture completely: it changes neither font size nor scroll position. It remains enabled by default, and ordinary scrolling plus the font-size keyboard shortcuts keep their existing behavior. Addresses [#329](https://github.com/Kuddev/pebrel/issues/329).
+- **Native Windows ARM64 installer support.** Installer builds and in-app updates now select the matching ARM64 package, alongside portable distribution. x64 support is unchanged; historical 1.9.0/1.9.1 ARM64 releases remain ZIP-only.
+
+#### Fixed
+
+##### Desktop input, rendering and window behavior
+
+- **Windows color emoji rendered as black shapes.** Corrected color-layer enumeration and transparent compositing initialization, restoring the colored glyphs and their transparent edges. Addresses [#317](https://github.com/Kuddev/pebrel/issues/317).
+- **Ctrl+C lost its control character in Windows input mode.** The missing character is restored so applications such as `adb shell` receive the interrupt, with key-down, key-up and modifier information preserved. Addresses [#213](https://github.com/Kuddev/pebrel/issues/213).
+- **Ctrl+/ lost its slash-key identity through ConPTY.** Windows input records now use the current keyboard layout's slash mapping, allowing native console applications to distinguish the shortcut correctly. The existing legacy byte encoding and ordinary slash text input are retained.
+- **macOS Command shortcuts stayed active after being cleared.** Clearing an action now also clears its built-in Command alias; restoring defaults reinstates both. For older saved configurations, clear the affected row once more after upgrading. Command+K unbinding removes the picker shortcut without assigning a clear-screen action. Addresses [#238](https://github.com/Kuddev/pebrel/issues/238).
+- **Command+Q did not quit the GPUI application.** The shortcut now uses the normal quit path, saving workspace state and drafts before ending terminal sessions.
+- **Color-report escape sequences appeared at shell prompts.** Changing the color-notification subscription no longer sends an immediate report, addressing the reported Fish/SSH prompt noise. Explicit queries and actual light/dark changes retain their responses. Addresses [#283](https://github.com/Kuddev/pebrel/issues/283).
+- **SFTP conflict dialogs remained open after an action.** Skip, Keep Both and Overwrite now close the dialog after submitting the choice. Cancel closes it without starting a transfer. Enter or Space activates the focused button; Enter without a focused button leaves the dialog open. Addresses [#230](https://github.com/Kuddev/pebrel/issues/230).
+- **Advanced theme colors were displayed but not saved.** Selection background, selection foreground and cursor text color now apply to the terminal and remain saved when reopening the editor. The cursor text preview also reflects the effective color.
+- **The update dialog became transparent with the terminal.** Its background remains opaque when terminal opacity is lowered, keeping update details and actions readable.
+- **Windows startup briefly showed an empty, incorrectly sized window.** Normal foreground startup prepares the initial terminal geometry before showing the window and presents its first frame before activation, avoiding the visible resize jump. Background and Quick Terminal startup keep their separate behavior.
+- **WSL received a Windows-form Hook executable path.** The path is translated when passed into WSL, allowing guest-side integration to locate the Hook executable.
+- **Windows packages depended on build-machine shader files.** ZIP and installer packaging now requires release-mode binaries with embedded shaders, removing the debug renderer's dependency on source files from the build machine.
+
+##### Agent state and reading position
+
+- **A completed Pi tool turn was marked as a failure.** A host-finished `toolUse` turn now produces the completion outcome and notification instead of an erroneous failed badge. Truncated, aborted and error outcomes retain their distinct meanings.
+- **Pi redraws displaced the text being read.** In supported Pi Hook sessions, synchronized redraws preserve the reading position when the previous content has a unique match. Scrolling, input, resizing and screen changes take priority over restoring the old position.
+- **Codex `/plan` left the mobile conversation stuck in a running state.** Sending `/plan` by itself now allows continued input after the mode switch. Normal prompts and commands that start tasks retain their existing running/completion behavior.
+- **Injected context appeared as conversation messages.** Supported Codex records now distinguish actual user messages from injected context and deduplicate repeated assistant/tool records. User-authored Markdown, XML and repeated questions remain intact.
+
+##### Mobile connections and session switching
+
+- **Changing a LAN address invalidated an already paired phone.** Address relocation now retains the computer's trusted key and phone grants while renewing the certificate for the new address. The phone can update the saved endpoint through an explicit address editor without scanning and approving the same computer again.
+- **Stale requests after switching mobile sessions.** Late reads and confirmation actions are rejected when their original connection, pane or conversation has changed. Reconnecting does not resend a command that may already have been delivered.
+
+#### Improved
+
+##### Desktop usability and localization
+
+- **A cleaner tray menu when no Agent is running.** The empty Agent message and its extra separator are hidden; Show and Quit remain available. Running Agent entries keep their existing status display. Addresses [#324](https://github.com/Kuddev/pebrel/issues/324).
+
+- **Independent SSH host copies.** Copy immediately saves a separate host with the same connection settings. Editing the copy's address, credentials, proxy/jump settings or organization leaves the source unchanged; profile exchange preserves its connection target.
+- **Local startup directories are remembered.** After a local terminal starts successfully, its initial directory enters the existing history and can be selected to open another terminal there. This addition does not record SSH or WSL guest paths as host-local directories. Addresses [#237](https://github.com/Kuddev/pebrel/issues/237).
+- **Sidebar resizing is available by default.** Drag the existing divider to adjust the sidebar without first enabling the option. An explicitly disabled resize setting is still respected.
+- **More workspace controls follow the selected language.** Toolbars, pane actions, local/remote file panels and close confirmations use the shared translation catalog rather than fixed Chinese labels. macOS shortcut hints identify Command as `Cmd` instead of `Win`.
+- **Expanded Japanese and Traditional Chinese translations.** Japanese adds missing desktop catalog entries; Traditional Chinese uses Taiwan terminology for tabs, customization and file management. Text awaiting translation continues to use the existing fallback.
+- **Acrylic blur at screen edges and when inactive.** On Windows 11 22H2+ with a matching Windows App Runtime 1.8 installed, Acrylic better preserves blur near screen edges and when focus is lost. Aero and older configurations retain their existing behavior. Addresses [#236](https://github.com/Kuddev/pebrel/issues/236).
+
+##### Mobile interaction and continuity
+
+- **Clearer pairing layout.** The pairing card groups controls in order: connection type, network interface and port, then instructions. The old QR code is hidden during an address change and replaced when the new invitation is ready.
+- **Pairing stays on one page.** The camera preview is embedded beside the scan/code/paste choices. Changing methods, leaving the page or backgrounding the app releases camera use; code and paste remain usable when camera permission is declined.
+- **LAN recovery no longer depends on keeping Settings open.** An enabled desktop LAN route retries a missing listener and preserves an automatically chosen port across restarts. The phone can look for a previously trusted computer while its disconnected workspace is in the foreground; manual address editing remains available when multicast discovery is restricted.
+- **Long conversations remain readable during updates.** Incoming messages preserve the visible message anchor and tool-folding state when reading earlier content. Automatic following applies when already at the bottom, rather than pulling the reader away from an older reply.
+- **Mobile display and input preferences are explicit.** Choose terminal themes and fonts, adjust font size, select cursor shape/blinking and enable or disable pinch zoom. The composer, history list and terminal viewport account for keyboard space, and terminal font selection is independent of system UI text scaling.
+- **More predictable file transfers.** Directory loading, previews and transfers support cancellation. Downloads stream to the selected destination, uploads preserve existing targets, and file-channel timeouts leave a still-usable shell open.
+
+##### Performance and installation ownership
+
+- **Less embedded font data.** The desktop embeds only the default Maple Mono Normal NF CN font. Font rasterization and loading of system or imported fonts retain their existing behavior.
+
+- **Fewer settings reads during redraws.** Theme, language and sidebar-resize queries in the affected GPUI views use in-memory settings instead of repeatedly reading and parsing files. Saved settings and system appearance changes still refresh the views.
+- **Startup does less blocking preparation.** Icon decoding/scaling and local directory-history recording are performed off the UI thread. The first visible window does not wait for all icon work, and cancelled or replaced icon requests do not overwrite the current workspace.
+- **Bounded background reading.** Conversation reads and document processing run in the background, with size limits on screen snapshots, row updates, image previews and reader caches. Phone-width reflow reuses unchanged frames instead of repeating the work on every paint.
+- **Channel-aware Windows updates.** Scoop-marked and Windows-packaged installations leave updates to their owning channel and show that channel in Settings. Regular installations retain the standalone updater. MSIX packaging and Scoop manifest generation are also supported.
+
+##### Compatibility and Preview scope
+
+- Android, desktop and relay packages retain separate version identities. The native relay uses protocol v2 and requires a matching phone client; older v1 combinations remain separate.
+- Short-code lookup and automatic LAN rediscovery require local-network discovery. QR/full invitations and manual address editing remain available. Tailscale requires a reachable address between the two devices.
+- Desktop-owned SSH conversation reading requires Python 3 on the remote host and a reported native transcript path.
+- Task notifications are delivered while online, without offline replay. Android background sessions remain subject to system process management.
+- MSIX and Scoop packaging support does not indicate Store publication or completed channel-installation acceptance. Final assets and checksums follow the release build.
+
+### 中文
+
+Pebrel 2.0 支持从手机访问桌面终端、Agent 对话、文件与 Git，任务继续在电脑上执行。Android 配套端同时提供本地终端与直连 SSH 终端。桌面端新增引导式加密备份与恢复、扩展自动化命令，并改进输入、渲染、启动和多语言体验。
+
+#### 新增
+
+##### 手机连接与桌面访问
+
+- **Android 配套端 Preview 与首次连接引导。** 首次进入时，可以选择连接电脑、添加 SSH 主机或打开本地终端，也可以跳过。取消连接表单后回到选择页；完成或跳过引导的状态会保存，后续启动不必重复选择。
+- **扫码、短码与完整邀请三种配对入口。** 桌面设置页生成十分钟有效的一次性邀请；在支持局域网发现的网络中，也可以输入八位数字取得邀请。网络限制设备发现时，仍可扫描二维码或粘贴完整邀请。
+- **电脑端确认配对。** 对照两端验证码，再在电脑上批准连接。每台已配对手机获得独立凭据，用于后续连接。
+- **局域网与自建中继两种连接方式。** 可以直连手机可达的局域网或 Tailscale 地址，也可以配置自建中继跨网络访问。手机与电脑之间的应用数据采用端到端加密，中继转发的是加密流量，不处理终端正文。
+- **按手机管理访问权限。** 查看已配对设备及在线状态，分别设置“仅查看”或“允许输入”，也可以撤销某一台手机的授权。暂停手机连接会断开会话但保留配对记录；关闭设置页则保留已经运行的连接。
+- **从手机管理自建中继。** 通过 SSH 在支持的 Linux systemd／OpenRC 主机上安装、查看、启动、停止或卸载原生中继，安装过程显示实际阶段与就绪状态。桌面端支持从文件、剪贴板导入连接信息，或从已保存的 SSH 主机读取配置。
+- **桌面工作区导航。** 从手机查看电脑的窗口、标签和分屏，并在权限允许时切换或关闭标签、新建终端、打开文件，直接操作现有桌面工作区。
+- **在线任务通知。** 连接期间通过系统通知接收桌面任务完成和需要处理的状态。Android 还提供显式的前台服务开关，用常驻通知维持后台活动连接，并可直接进入系统通知设置。
+
+##### Android 终端与命令输入
+
+- **设备本地终端。** 使用 Android Shell 和应用自己的主目录，独立于电脑连接运行；可用命令由设备环境决定。
+- **直连 SSH 终端。** 保存主机，使用密码或服务端认可的免密方式连接，确认首次遇到的主机指纹，并查看实际连接阶段。可选的会话模式也支持接入服务器上已经安装的兼容会话保持工具。
+- **编辑后发送与直接输入两种模式。** 可以先在手机本地编辑多行草稿，再显式发送；也可以切换到直接终端输入。草稿按会话保存，收到提交确认后才清除，切换视图不会悄悄提交或丢弃尚未完成的内容。
+- **触屏终端按键。** 工具栏提供 Ctrl+C、Esc、Tab、方向键及键盘控制。发送到电脑的按键遵循目标终端的输入模式。
+- **按会话使用命令历史。** 在编辑区复用先前提交的内容，并随输入过滤候选。选择历史记录只填入草稿，执行仍需显式发送；历史建议可以在设置中关闭。
+- **本地与直连 SSH 终端的文件附件。** 使用 Android 文件选择器导入或上传文件，再把带引号的路径放入编辑区。添加附件只修改草稿，不自动执行 Shell 命令；该附件入口接受最大 16 MiB 的文件。
+- **可选的端侧语音输入。** 下载语音模型后，长按录音，在设备上识别为可编辑草稿，发送仍由用户确认。模型支持删除，离开录音视图时停止录音。
+
+##### 对话、文档与远程文件
+
+- **已有 Agent 会话的对话视图。** 从桌面会话读取受支持的 Codex、Claude 原生消息，展示用户输入、助手回复和工具结果。终端视图与对话视图共用同一个正在运行的 CLI 及其上下文，不额外启动另一位 Agent。
+- **可操作的确认选项。** 回答当前会话中识别出的问题，并展开或收起工具结果。按钮对应具体问题，普通编号正文与可操作选项保持区分。
+- **手机端彩色终端画面。** 桌面屏幕快照保留文字与背景颜色、样式、宽字符、组合字符和光标位置。即使电脑端正在查看较早的滚动历史，手机仍读取当前活动屏幕。
+- **按手机宽度重排终端内容。** 将支持的桌面屏幕行重新排到手机可用宽度，不改变电脑 PTY 尺寸或桌面布局。对于依赖固定网格的终端程序，也可以切回原始网格显示。
+- **手机端桌面文件标签。** 在独立标签中阅读受支持的文本、Markdown 和图片文件；加载期间文件发生变化时提示更新，不混用不同版本的内容。
+- **直连 SSH 会话中的 SFTP 浏览与传输。** 分页浏览目录、新建文件夹、重命名或删除条目、上传文件，并通过 Android 文件选择器下载。文件浏览器复用已有 SSH 认证，但使用独立文件通道；关闭文件标签后，终端会话继续保留。
+- **共用的离线文档阅读器。** 桌面文件、SFTP 文件和 Agent 消息使用同一套阅读组件，支持 Markdown 表格、任务列表、删除线、代码高亮、行内／块级公式与 Mermaid 图表。渲染库及字体随应用携带，打开文档时无需临时从 CDN 获取。
+- **文档导航、代码复制与图片查看。** 支持将适用的相对链接打开为文件标签、通过系统打开外部链接、复制不含行号及围栏的原始代码，以及在独立视图中缩放或重置图片。复制后有可见反馈，不额外撑开正文布局。
+
+##### 在连接的工作区中操作 Git
+
+- **手机端仓库浏览。** 针对选定桌面分屏的工作目录，查看变更文件、暂存与未暂存差异、分支信息及分页提交历史，在 Git 视图中直接打开文件和提交差异。
+- **Git 操作。** 支持暂存、取消暂存、提交、fetch、pull 和 push。同步按“fetch → 仅快进 pull → push”执行，后续步骤失败时保留已完成步骤的记录。写操作要求输入权限与最新仓库快照，结果不确定时不自动重发。
+
+##### 加密备份与恢复
+
+- **引导式“备份与恢复”设置页。** 按存储位置、连接检查、备份密码和内容选择逐步完成配置。支持已有文件夹、WebDAV、S3 兼容存储，以及已保存 SSH 主机上的远程目录。
+- **按次选择备份内容。** 按需选择外观、终端与助手设置、SSH 主机配置、工作区布局、导入字体及历史类别。界面显示所选内容大小，并在备份成功后记住选择。
+- **先在电脑加密，再保存或上传。** SSH 私钥和系统凭据库中的秘密不纳入归档；命令历史作为独立类别选择。备份密码只在本次应用运行期间保留，不写入保存的配置文件。
+- **便于跨电脑迁移的归档导入与导出。** 将所选内容导出为 `.pebrel-backup` 文件，或选择归档并用备份密码解锁。通过文件交换时，无需先配置远程存储。
+- **分项恢复，并可撤回本次恢复。** 先验证、解锁并查看归档，再勾选需要恢复的内容，未勾选项保持不变。覆盖前保存本机加密恢复副本，并记录原文件是否存在，可在当前设置会话中撤回此次恢复。
+
+##### 自动化与桌面选项
+
+- **为分屏窗格单独命名。** 双击窗格标题编辑名称，Enter 或失焦保存、Esc 取消，清空后恢复自动标题。名称随窗格移动，并随会话保存和恢复。
+
+- **扩展 Runtime API。** 自动化客户端可通过稳定标识定位标签、打开和读取受支持的文件标签、获取终端屏幕快照、读取受支持的 Agent 对话，以及执行限定范围的 Git 操作。原有纯文本终端读取继续保留。
+- **原生与 Lua 插件命令。** `pebrel plugin check` 检查本地命令包，`pebrel plugin run` 执行一个已声明的 Runtime 请求或 Lua 处理器，并返回结构化结果。命令按需运行，原生请求跳过 Lua 初始化，Lua 调用结束后释放虚拟机；本版支持命令插件，不包含常驻插件面板。
+- **Ctrl+滚轮字号缩放开关。** 在“设置 → 外观 → 终端外观”中关闭后，该手势既不改变字号，也不滚动终端。默认继续开启，普通滚轮和字号快捷键保持原有行为。对应 [#329](https://github.com/Kuddev/pebrel/issues/329)。
+- **原生 Windows ARM64 安装器支持。** 安装器构建与应用内更新支持匹配的 ARM64 包，与便携版配套。x64 支持保持不变；历史 1.9.0／1.9.1 的 ARM64 资产仍仅包含 ZIP。
+
+#### 修复
+
+##### 桌面输入、渲染与窗口行为
+
+- **Windows 彩色 emoji 显示成黑色轮廓。** 修正彩色字形图层的枚举与透明合成初始化，恢复表情颜色及透明边缘。对应 [#317](https://github.com/Kuddev/pebrel/issues/317)。
+- **Windows 输入模式丢失 Ctrl+C 控制字符。** 补回遗漏的控制字符，让 `adb shell` 等程序正确接收中断，同时保留按下、抬起及修饰键信息。对应 [#213](https://github.com/Kuddev/pebrel/issues/213)。
+- **Ctrl+/ 经过 ConPTY 后丢失斜杠按键身份。** Windows 输入记录按当前键盘布局解析斜杠，让原生控制台程序正确区分快捷键；原有传统字节编码与普通斜杠文本输入继续保留。
+- **macOS 清除快捷键后，Command 绑定仍生效。** 清除动作时同步清除内置 Command 别名，恢复默认时一并恢复。使用旧配置的用户需在升级后重新清除一次对应设置行；解绑 Command+K 仅移除选择器快捷键，不另行指定清屏动作。对应 [#238](https://github.com/Kuddev/pebrel/issues/238)。
+- **Command+Q 没有退出 GPUI 应用。** 现在走正常退出流程，先保存工作区状态与草稿，再结束终端会话。
+- **Shell 提示符出现配色报告转义序列。** 调整配色通知订阅时不再立即发送报告，修正 Fish／SSH 提示符乱码涉及的订阅行为；显式查询和实际明暗变化继续得到响应。对应 [#283](https://github.com/Kuddev/pebrel/issues/283)。
+- **SFTP 同名冲突弹窗在选择后残留。** “跳过”“保留两者”和“覆盖”在提交选择后关闭弹窗，“取消”只关闭弹窗、不启动传输。Enter 或空格激活当前聚焦按钮；未聚焦按钮时，Enter 保留弹窗。对应 [#230](https://github.com/Kuddev/pebrel/issues/230)。
+- **高级主题颜色修改后未保存。** 选区背景色、选区前景色与光标文字色正确应用到终端，并在重新打开编辑器时保留；光标文字预览同步显示生效颜色。
+- **更新弹窗随终端一起变透明。** 降低终端不透明度后，更新弹窗仍保持不透明底色，让版本信息与操作按钮保持可读。
+- **Windows 启动时先出现空窗口，再跳变尺寸。** 正常前台启动会在显示窗口前准备首屏终端几何，并在激活前呈现首帧，避免可见的尺寸跳变；后台启动与 Quick Terminal 保留各自的行为。
+- **WSL 收到 Windows 形式的 Hook 程序路径。** 路径传入 WSL 时转换为对应形式，供来宾侧集成定位 Hook 程序。
+- **Windows 分发包依赖构建机上的着色器文件。** ZIP 与安装器打包要求使用嵌入着色器的 release 二进制，消除 debug 渲染器对构建机源文件的依赖。
+
+##### Agent 状态与阅读位置
+
+- **Pi 已结束的工具调用轮次被标成失败。** 由宿主结束的 `toolUse` 轮次现在产生完成结果与通知，不再显示错误的失败标记；截断、中止和报错仍保持各自含义。
+- **Pi 重绘打断阅读位置。** 在受支持的 Pi Hook 会话中，同步重绘后若能唯一匹配原内容，便保留阅读位置。用户滚动、输入、调整尺寸和切换屏幕优先于旧位置恢复。
+- **Codex `/plan` 让手机对话停在“运行中”。** 单独发送 `/plan` 后，模式切换完成即可继续输入；普通提问及启动任务的命令保留原有运行与完成状态。
+- **注入上下文被显示为对话消息。** 受支持的 Codex 记录区分真实用户消息与注入上下文，并去重助手／工具的重复记录；用户编写的 Markdown、XML 和重复提问保持完整。
+
+##### 手机连接与会话切换
+
+- **更换局域网地址后，已配对手机失去连接凭据。** 地址变更时保留电脑的可信密钥与手机授权，为新地址更新证书。手机可通过显式地址编辑入口更新已保存端点，无需重新扫描并再次批准同一台电脑。
+- **手机会话切换后仍有过期请求。** 原连接、分屏或对话发生变化后，丢弃迟到的读取结果与确认操作；重连不重发可能已经送达的命令。
+
+#### 改进
+
+##### 桌面使用与多语言
+
+- **无 Agent 时精简托盘菜单。** 隐藏空 Agent 提示及多余分隔线，保留显示和退出命令；有 Agent 时继续显示原有条目与状态。对应 [#324](https://github.com/Kuddev/pebrel/issues/324)。
+
+- **独立的 SSH 主机副本。** “复制”立即保存具有相同连接设置的独立主机。编辑副本的地址、凭据、代理／跳板或组织信息不影响原主机，配置交换保留其连接目标。
+- **记住本地终端的初始目录。** 本地终端成功启动后，将初始目录加入既有历史，后续可以从中选择并在该目录打开新终端；这项补充不会把 SSH 或 WSL 来宾路径记录为本机目录。对应 [#237](https://github.com/Kuddev/pebrel/issues/237)。
+- **默认可以拖动侧栏宽度。** 无需先启用设置即可拖动既有分隔线调整侧栏；已经显式关闭拖宽的配置继续生效。
+- **更多工作区控件跟随所选语言。** 工具栏、分屏操作、本地／远程文件面板与关闭确认使用共享翻译目录，减少固定中文文案；macOS 快捷键提示使用 `Cmd`，不再把 Command 显示为 `Win`。
+- **扩充日语与繁体中文翻译。** 日语补充缺失的桌面消息目录条目，繁体中文按台湾用语修订标签、自定义与文件管理等措辞。待翻译文字继续使用既有回退。
+- **改善 Acrylic 边缘与失焦模糊。** Windows 11 22H2+ 安装架构匹配的 Windows App Runtime 1.8 后，Acrylic 更好地保持屏幕边缘及失焦时的模糊效果。Aero 与较旧配置保留原有行为。对应 [#236](https://github.com/Kuddev/pebrel/issues/236)。
+
+##### 手机交互与连续使用
+
+- **更清晰的配对布局。** 配对卡片内依次排列连接类型、网卡与端口、操作步骤。地址变更期间隐藏旧二维码，新邀请准备完成后再显示。
+- **在同一页完成配对方式切换。** 相机预览内嵌在扫码／短码／粘贴入口旁；切换方式、离开页面或应用进入后台时释放相机。未授予相机权限时，仍可使用短码和粘贴。
+- **局域网恢复不再依赖设置页常开。** 已启用的桌面局域网连接会重试缺失监听，并在重启时保留自动选定的端口。手机可在断开的工作区处于前台时查找此前信任的电脑；多播发现受限时仍可手动编辑地址。
+- **长对话更新时保留阅读位置。** 查看较早消息时，新增回复保留可见消息锚点与工具折叠状态；只有原本位于底部时才继续跟随，不把正在阅读旧回复的用户拉回最新消息。
+- **明确的移动端显示与输入偏好。** 可选择终端主题和字体、调整字号、设置光标形状与闪烁，并启用或关闭双指缩放。编辑区、历史列表和终端视口按键盘可用空间排列，终端字体与系统界面文字缩放各自生效。
+- **更可控的文件传输。** 目录加载、预览与传输支持取消；下载流式写入选定目标，上传保留已有目标文件，文件通道超时不关闭仍可用的 Shell。
+
+##### 性能与安装来源
+
+- **减少内嵌字体数据。** 桌面端仅内嵌默认的 Maple Mono Normal NF CN 字体，保持原有字体光栅化，以及系统和导入字体的加载行为。
+
+- **减少重绘期间的设置读取。** 相关 GPUI 视图的主题、语言与侧栏拖宽查询读取内存设置，避免反复读盘和解析文件；保存设置及系统外观变化仍正常刷新界面。
+- **减少启动阶段的阻塞准备。** 图标解码、缩放及本地目录历史记录移到 UI 线程之外；首次显示不必等全部图标准备完成，取消或被替换的图标请求也不会覆盖当前工作区。
+- **有界的后台阅读处理。** 对话读取与文档处理在后台进行，屏幕快照、行更新、图片预览及阅读缓存设有大小上限。手机宽度重排复用未变化的画面，避免每次绘制重复计算。
+- **按 Windows 安装渠道更新。** 带有 Scoop 标记或 Windows 包身份的安装由对应渠道管理更新，并在设置中显示来源；普通安装继续使用独立更新器。同时支持 MSIX 打包与 Scoop 清单生成。
+
+##### 兼容性与 Preview 范围
+
+- Android、桌面应用与中继分别维护版本。原生中继使用 v2 协议，需搭配相应手机客户端；旧版 v1 组合单独使用。
+- 短码查询与局域网自动重新发现依赖本地网络发现；扫码、完整邀请及手动编辑地址仍可使用。Tailscale 需要两端地址实际可达。
+- 读取桌面 SSH 会话的对话，要求远端安装 Python 3，并上报原生会话记录路径。
+- 任务通知在联网期间送达，不含离线补发；Android 后台会话仍受系统进程管理约束。
+- MSIX 与 Scoop 打包支持不等同于商店上架或渠道安装验收完成。最终资产与校验值随发布构建确定。
+
+### Contributors
+
+Thanks to everyone who contributed to this update. / 感谢参与本次更新的贡献者。
+
+<p>
+<a href="https://github.com/WilliamWang1721"><img src="https://github.com/WilliamWang1721.png?size=96" width="64" height="64" alt="@WilliamWang1721 avatar"></a>
+<a href="https://github.com/JoyElliot"><img src="https://github.com/JoyElliot.png?size=96" width="64" height="64" alt="@JoyElliot avatar"></a>
+<a href="https://github.com/thynomex"><img src="https://github.com/thynomex.png?size=96" width="64" height="64" alt="@thynomex avatar"></a>
+<a href="https://github.com/Cec1c"><img src="https://github.com/Cec1c.png?size=96" width="64" height="64" alt="@Cec1c avatar"></a>
+<a href="https://github.com/AnxForever"><img src="https://github.com/AnxForever.png?size=96" width="64" height="64" alt="@AnxForever avatar"></a>
+<a href="https://github.com/galact-byte"><img src="https://github.com/galact-byte.png?size=96" width="64" height="64" alt="@galact-byte avatar"></a>
+<a href="https://github.com/zhbjerry"><img src="https://github.com/zhbjerry.png?size=96" width="64" height="64" alt="@zhbjerry avatar"></a>
+<a href="https://github.com/keys-cherish"><img src="https://github.com/keys-cherish.png?size=96" width="64" height="64" alt="@keys-cherish avatar"></a>
+<a href="https://github.com/tavricccc"><img src="https://github.com/tavricccc.png?size=96" width="64" height="64" alt="@tavricccc avatar"></a>
+<a href="https://github.com/Tettu0530"><img src="https://github.com/Tettu0530.png?size=96" width="64" height="64" alt="@Tettu0530 avatar"></a>
+<a href="https://github.com/Sakyvo"><img src="https://github.com/Sakyvo.png?size=96" width="64" height="64" alt="@Sakyvo avatar"></a>
+<a href="https://github.com/wyr-zal"><img src="https://github.com/wyr-zal.png?size=96" width="64" height="64" alt="@wyr-zal avatar"></a>
+<a href="https://github.com/Kuddev"><img src="https://github.com/Kuddev.png?size=96" width="64" height="64" alt="@Kuddev avatar"></a>
+</p>
+
+- **[@WilliamWang1721](https://github.com/WilliamWang1721)** — Rendering settings reads, startup-directory history, SSH host duplication, default sidebar resizing, Windows ARM64 installation, advanced theme colors, Ctrl+/ and color emoji; Pi helper regression coverage. / 渲染设置读取、启动目录历史、SSH 主机复制、默认侧栏拖宽、Windows ARM64 安装、高级主题颜色、Ctrl+/ 与彩色 emoji，以及 Pi 辅助进程回归覆盖。([#140](https://github.com/Kuddev/pebrel/pull/140), [#243](https://github.com/Kuddev/pebrel/pull/243), [#267](https://github.com/Kuddev/pebrel/pull/267), [#282](https://github.com/Kuddev/pebrel/pull/282), [#284](https://github.com/Kuddev/pebrel/pull/284), [#299](https://github.com/Kuddev/pebrel/pull/299), [#300](https://github.com/Kuddev/pebrel/pull/300), [#304](https://github.com/Kuddev/pebrel/pull/304), [#318](https://github.com/Kuddev/pebrel/pull/318))
+- **[@JoyElliot](https://github.com/JoyElliot)** — Windows Acrylic and first-frame behavior, Win32 control characters, SFTP conflict dialogs and pane titles. / Windows Acrylic 与首帧呈现、Win32 控制字符、SFTP 冲突弹窗及窗格标题。([#250](https://github.com/Kuddev/pebrel/pull/250), [#251](https://github.com/Kuddev/pebrel/pull/251), [#310](https://github.com/Kuddev/pebrel/pull/310), [#311](https://github.com/Kuddev/pebrel/pull/311), [#333](https://github.com/Kuddev/pebrel/pull/333))
+- **[@thynomex](https://github.com/thynomex)** — Workspace controls and confirmation localization. / 工作区控件与确认文案本地化。([#133](https://github.com/Kuddev/pebrel/pull/133))
+- **[@Cec1c](https://github.com/Cec1c)** — Cursor-motion foundations: preference handling, trajectory logic and tests. / 光标运动基础：设置处理、轨迹逻辑与测试。([#293](https://github.com/Kuddev/pebrel/pull/293))
+- **[@AnxForever](https://github.com/AnxForever)** — Hook executable path translation across WSL. / 跨 WSL 的 Hook 程序路径转换。([#290](https://github.com/Kuddev/pebrel/pull/290))
+- **[@galact-byte](https://github.com/galact-byte)** — Pi reading-position preservation during synchronized redraws. / Pi 同步重绘期间的阅读位置保持。([#234](https://github.com/Kuddev/pebrel/pull/234))
+- **[@zhbjerry](https://github.com/zhbjerry)** — macOS configurable Command shortcuts and normal quit. / macOS Command 快捷键配置与正常退出。([#248](https://github.com/Kuddev/pebrel/pull/248))
+- **[@keys-cherish](https://github.com/keys-cherish)** — Readable update dialogs at low terminal opacity. / 低终端不透明度下更新弹窗的可读性。([#305](https://github.com/Kuddev/pebrel/pull/305))
+- **[@tavricccc](https://github.com/tavricccc)** — Traditional Chinese catalog and Taiwan terminology. / 繁体中文消息目录与台湾用语。([#301](https://github.com/Kuddev/pebrel/pull/301))
+- **[@Tettu0530](https://github.com/Tettu0530)** — Japanese message-catalog expansion. / 日语消息目录扩充。([#314](https://github.com/Kuddev/pebrel/pull/314))
+- **[@Sakyvo](https://github.com/Sakyvo)** — Completed Pi tool-turn outcomes and notifications. / Pi 已结束工具轮次的结果与通知。([#321](https://github.com/Kuddev/pebrel/pull/321))
+- **[@wyr-zal](https://github.com/wyr-zal)** — Configurable Ctrl+wheel font zoom. / 可配置的 Ctrl+滚轮字号缩放。([#331](https://github.com/Kuddev/pebrel/pull/331))
+- **[@Kuddev](https://github.com/Kuddev)** — Desktop/mobile integration, backup and restore, automation, review and release preparation; color-report correction and reviewed integration batches. / 桌面与移动端整合、备份恢复、自动化、审查与发布准备，以及配色报告修正和审核后的批次整合。([#302](https://github.com/Kuddev/pebrel/pull/302), [#337](https://github.com/Kuddev/pebrel/pull/337), [#338](https://github.com/Kuddev/pebrel/pull/338))
+
+---
+
+**SHA256**
+
+- `Pebrel-v2.0.0-linux-x64-preview.AppImage`: `52941463b7b558c63fc1717d88a2d758bb67f9f1bd468c2a489be9cd7fab25d9`
+- `Pebrel-v2.0.0-linux-x64-preview.deb`: `d2c8dcea66e2106f01e590730a18133c16fca08b2cdb9eab4d5cb922f80b914c`
+- `Pebrel-v2.0.0-linux-x64-preview.tar.gz`: `0318dcafdb79de1a2c11bdfa61b03e12f0c227ffa55960e7fa6fc486aa5a6501`
+- `Pebrel-v2.0.0-macos-arm64-preview.dmg`: `eb3a4f758f53e2571bcd9c0cbbb2560c8d43c2e4446cadac65487594a5ccc778`
+- `Pebrel-v2.0.0-macos-x64-preview.dmg`: `6698b0e04b395ca99a1e33fbb3382d9c95886f07e80c85c6fb9ac794150e3e3e`
+- `Pebrel-v2.0.0-windows-x64.zip`: `1bac7a1caa37b9c414667c0ce60cc132e2fde8a7d9a1ced5eecf7b5dda53419a`
+- `Pebrel-v2.0.0-windows-x64-setup.exe`: `4c3ff71c6924a022717e97316acc32dd10db6972d91f33427ca502fbb7d79316`
+- `Pebrel-v2.0.0-windows-arm64.zip`: `9127fa9891560a47a9d4d0458d0b6094e95ccd0fbc73623aa077618323456334`
+- `Pebrel-v2.0.0-windows-arm64-setup.exe`: `234cf07fd4b9c25caebd6b55138c6d97087cccf0a7152c79882d4c35cb2bdb52`
+- `Pebrel-v2.0.0-android-universal-preview.apk`: `dcef9e724e1500663613a367b41acccf84d45bf55c46e28a9ad5b1508662828c`
+
+## 1.9.1 - 2026-09-24
 
 ### English
 
 #### Added
 
-- Added live Markdown editing: focus a paragraph or inline expression to edit its source while retaining the document view, selection and undo history.
-- Added Kimi Code recognition, session commands and managed notification hooks.
-- Added cloud backup controls with saved preferences, connection feedback and access to configuration backups.
-- Added a persistent font-ligature setting that applies to open terminal sessions.
+- Added in-app updates for packaged macOS applications on Apple Silicon and Intel. Verified updates can install after restart or on the next launch, then restore the saved workspace. Immediate relaunch failure rolls back to the original application. Installation requires a writable application location; copies running from a disk image or App Translocation must first be moved.
+- Added SSH display names to the Shell picker, Quick Jump and command palette. Named hosts show their configured name alongside the original connection target; unnamed hosts keep the previous display. Search matches both the name and target, and selecting a row still connects to the original destination.
+- Added a configurable tab-rename shortcut in Settings → Key Bindings → Tabs. The default remains F2; changing or clearing the shortcut lets F2 reach terminal applications such as Codex CLI. Changes apply without restarting, and menu shortcut hints follow the effective binding.
 
 #### Fixed
 
-- Fixed Codex cold restoration using a Hook group identifier instead of the native conversation identity. Saved sessions with an older or unrecognized transcript filename retain their existing valid conversation ID.
-- Windows local Codex sessions can recover their exact conversation ID and native path from the running process, including when a Hook identity is missing. Later lifecycle-only events retain the verified identity.
-- When Codex reports a missing saved conversation, recovery opens its native chooser, including from CMD. Failed restores also offer an explicit conversation choice in the tab menu.
-- Closing with unavailable AI session identities now offers saving known state and exiting; save failures and changed editor drafts still keep the application open.
-- Fixed file-editor selections and search matches blending into light and dark backgrounds. Ordinary text/code files now reveal the configured workspace background image, and the caret row follows the active theme.
-- Fixed copying the terminal working directory: menu and command-palette actions copy the directory reported by the shell, including guest paths, while normal selection copying retains the original text.
-- Fixed AI failure and cancellation events being presented as successful completion; Pi retry-aware outcomes and Claude failure events use the shared notification result handling.
-- Fixed WSL hook installation and event delivery using the distribution's own user configuration. Updated command completions include the distribution and user options.
-- Fixed inherited Ctrl+C suppression preventing interruption of CMD child commands, while keeping selection copying available.
-- Fixed native CMD command activity and multiline/pending-wrap input tracking.
-- Fixed application 256-color blocks being overwritten by terminal prompt colors. Explicit custom color overrides remain supported.
-- Fixed SSH automatic authentication ignoring the available system agent.
-- Fixed long Markdown outline headings overlapping neighboring rows.
-- Fixed Markdown caret placement for CJK and emoji, interrupted drag selections, heading layout shifts and code-language pickers extending beyond the window.
+- Fixed update checks failing when GitHub returns HTTP 403 or 429. The updater falls back to the official latest-release page and checksum manifest; if verified package metadata is unavailable, manual download remains available.
+- Fixed macOS terminal links not opening with Command+left click. Link gestures also work when an application enables mouse reporting, while ordinary clicks still reach the application. Hover hints show the correct platform modifier in the selected language. Addresses [#196](https://github.com/Kuddev/pebrel/issues/196).
+- Fixed Windows Codex Hook commands failing during PowerShell parsing, including executable paths with spaces or special characters. Existing Pebrel-managed commands are migrated while preserving user and third-party hooks. Addresses [#254](https://github.com/Kuddev/pebrel/issues/254) and [#255](https://github.com/Kuddev/pebrel/issues/255).
+- Bounded Hook event forwarding when input remains open or the receiving application stops reading, so forwarding cannot wait indefinitely and keep the helper executable locked. Already running helpers from older versions do not acquire this timeout.
+- Fixed successful same-version repair installations being reported as failures when the main executable remains byte-identical. Before setup starts, the updater briefly waits for installed Hook files to become writable; a persistent lock stops the update before setup can partially replace the installation. Installer success, package verification and the expected application version remain required. Addresses [#258](https://github.com/Kuddev/pebrel/issues/258).
+- Fixed dashed link underlines covering only part of Chinese and other wide characters, and restarting their pattern at spaces or font boundaries. Underlines now follow terminal columns and display scaling.
+- Fixed quoted Windows, UNC and home-directory paths containing spaces being recognized only up to the first space. Link highlighting and opening use the complete quoted path.
+- Fixed WSL shell-prompt links including the trailing `$` or `#`, and absolute prompt paths losing their underline. Opening an absolute WSL prompt path uses the originating distribution; copying keeps the original path text.
+- Fixed missing truecolor declarations in fresh Windows and WSL panes. Applications can retain their intended message-background colors across terminal themes, including Codex user-message backgrounds. Animation output remains controlled by the CLI; Pebrel does not add or filter stars according to reasoning level.
+- Fixed tab context menus mixing hardcoded Chinese with the selected interface language. Menu labels now follow the active language across all 11 supported locales, including Korean, in both sidebar and top tabs.
 
 #### Improved
 
-- Added direct responses for supported AI confirmation notifications, with stale-request checks before sending a response; Windows notification activation restores the corresponding application window.
-- Made notification duration configurable and preserved the selected duration when replacing a pane's result.
-- Reduced repeated Git/SVN drawer work by reusing repository snapshots and rendering visible rows.
-- Improved settings search, SSH connection cards and terminal file-link opening.
-- Made cloud-storage configuration compact, bounded provider and credential fields, and aligned file-panel controls.
-- Updated command-group navigation, ordering and add actions.
-- Added settings for enabling each supported Agent integration while retaining other managed and user-owned hook entries.
+- Organized Windows Explorer integration into one normal Pebrel open command and one WSL submenu containing the installed distributions. Installation migrates Pebrel-owned flat entries while preserving unrelated or user-edited commands.
+- Expanded issue forms with operating-system, shell, pane-program and connection details, and clearer reproduction and evidence fields to make problem reports easier to investigate.
 
-Windows packages include an installer and portable ZIP. Linux and macOS packages retain their Preview designation. This candidate is intended for installation testing; visual acceptance and live cold restoration with every external CLI remain separate from automated checks.
+Windows x64 provides an installer and portable ZIP; Windows ARM64 provides a native portable ZIP. On Windows, the installer and automatic installation remain x64-only; packaged macOS applications support in-app installation. Linux x64 packages and macOS Apple Silicon / Intel DMGs remain Preview releases.
 
 ### 中文
 
 #### 新增
 
-- 新增 Markdown 即时编辑：聚焦段落或行内表达式即可编辑对应源码，同时保留文档视图、选区和撤销历史。
-- 新增 Kimi Code 识别、会话命令和受管理的通知 Hook。
-- 新增云端备份入口，支持保存偏好、连接反馈和访问配置备份。
-- 新增可持久保存的字体连字设置，并可应用于已打开的终端会话。
+- 为 Apple Silicon 和 Intel 上的 macOS 打包应用加入应用内更新：校验通过后，可选择重启安装或下次启动时安装，并恢复已保存的工作区；新应用立即重启失败时回滚到原应用。安装位置必须可写，从磁盘映像或 App Translocation 路径运行的副本需先移动到正常安装位置。
+- 在 Shell 选择器、快速跳转和命令面板中显示 SSH 主机名称：已命名的主机显示名称与原始连接目标，未命名的主机保持原来的显示。搜索同时匹配名称和目标，选择后仍连接原始地址。
+- 在“设置 → 按键映射 → 标签页”中新增可修改的“重命名标签”快捷键，默认仍为 F2。修改或清除后，F2 可传递给 Codex CLI 等终端程序；设置无需重启即可生效，菜单提示同步显示实际快捷键。
 
 #### 修复
 
-- 修复 Codex 冷恢复误用 Hook 分组标识而非原生对话身份的问题。旧快照中的会话文件名无法识别时，保留原有有效对话 ID。
-- Windows 本地 Codex 会话可从正在运行的进程找回准确的对话 ID 和原生文件路径，补足 Hook 身份缺失的情况；后续仅包含生命周期信息的事件会保留已核验身份。
-- Codex 报告保存的对话不存在时，包括 CMD 在内的恢复流程可打开原生会话选择器；恢复失败后，也可从标签页菜单主动选择对话。
-- AI 会话身份暂时无法取得时，关闭操作提供保存已知状态并退出的选择；保存失败或编辑器草稿发生变化时仍保持应用打开。
-- 修复文件编辑器选区与查找命中融入浅色、深色背景的问题；普通文本和代码文件可透出已配置的工作区背景图，光标所在行跟随当前主题。
-- 修复终端工作目录复制：菜单和命令面板复制 Shell 上报的目录，包括访客环境路径；普通选区复制保留原始文字。
-- 修复 AI 失败和取消事件被显示为成功完成的问题；Pi 重试后的结果及 Claude 失败事件统一进入通知结果处理。
-- 修复 WSL Hook 安装与事件传递，使用发行版自身的用户配置；命令补全同步包含发行版和用户选项。
-- 修复继承的 Ctrl+C 忽略状态导致 CMD 子命令无法中断的问题，同时保留选区复制。
-- 修复原生 CMD 命令活动、多行输入和等待折行边界的输入跟踪。
-- 修复应用的 256 色块被终端提示符颜色覆盖的问题，保留明确配置的自定义颜色覆盖。
-- 修复 SSH 自动认证忽略可用系统代理的问题。
-- 修复 Markdown 目录长标题与相邻行重叠的问题。
-- 修复 Markdown 中文与 emoji 的光标落点、中断拖动后残留选区、标题编辑时布局跳动以及代码语言菜单超出窗口的问题。
+- 修复 GitHub 返回 HTTP 403 或 429 时检查更新失败的问题；改用官方最新版本页面与校验清单恢复查询，无法取得已验证安装包信息时仍可手动下载。
+- 修复 macOS 终端链接无法通过 Command+左键打开的问题；终端应用启用鼠标上报后，链接手势仍可使用，普通点击继续传给应用。悬停提示按当前语言显示对应平台的修饰键。对应 [#196](https://github.com/Kuddev/pebrel/issues/196)。
+- 修复 Windows Codex Hook 命令在 PowerShell 解析阶段失败的问题，正确处理程序路径中的空格和特殊字符；迁移 Pebrel 管理的旧命令，同时保留用户及第三方 Hook。对应 [#254](https://github.com/Kuddev/pebrel/issues/254)、[#255](https://github.com/Kuddev/pebrel/issues/255)。
+- 为 Hook 事件转发增加等待期限，避免输入一直未关闭或接收端停止读取时无限等待并持续占用辅助程序文件。已经运行的旧版本 Hook 不会自动获得此超时机制。
+- 修复同版本修复安装成功后，仅因主程序字节未改变而误报失败的问题。启动安装器前，会短暂等待已安装的 Hook 文件恢复可写；持续占用时提前停止，避免安装器只替换部分文件。仍要求安装器成功、安装包校验通过且最终应用版本正确。对应 [#258](https://github.com/Kuddev/pebrel/issues/258)。
+- 修复中文及其他宽字符的链接虚线只覆盖半个字符，以及虚线在空格或字体边界处重新起算的问题；下划线按终端列和显示缩放连续绘制。
+- 修复带引号的 Windows、UNC 和主目录路径包含空格时，只识别到第一个空格的问题；链接高亮与打开操作使用完整的引号内路径。
+- 修复 WSL 提示符路径把末尾 `$`、`#` 包含进链接，以及绝对路径提示符缺少下划线的问题；打开 WSL 绝对提示符路径时使用所属发行版，复制时保留原始路径文本。
+- 修复新建 Windows 和 WSL 面板缺少真彩色声明的问题，使应用能在不同终端主题下保留其指定的消息背景色，包括 Codex 用户消息背景。动画仍由 CLI 决定，Pebrel 不根据思考等级添加或过滤星点。
+- 修复标签右键菜单在非中文界面中混用硬编码中文的问题；侧栏和顶部标签的菜单均跟随当前界面语言，覆盖包括韩语在内的全部 11 种支持语言。
 
 #### 改进
 
-- 支持从部分 AI 确认通知直接回答，发送前检查请求是否过期；Windows 通知激活时恢复对应的应用窗口。
-- 支持配置通知停留时长，并在替换窗格结果时保留选定时长。
-- 复用仓库快照、仅渲染可见行，减少 Git／SVN 抽屉的重复工作。
-- 改进设置搜索、SSH 连接卡片和终端文件链接打开。
-- 收紧云存储配置布局，限制服务选择器和凭据输入宽度，并统一文件面板控件尺寸。
-- 更新命令分组导航、排序和新增操作的布局。
-- 新增各受支持 Agent 的集成开关，安装与移除时保留其他受管理及用户已有 Hook 项。
+- 整理 Windows 资源管理器右键菜单，保留一个普通 Pebrel 打开入口，并将已安装的 WSL 发行版集中到一个子菜单中；安装时迁移 Pebrel 自有的旧平铺入口，保留无关或经过用户编辑的命令。
+- 完善问题反馈表单，补充操作系统、Shell、面板程序和连接方式等信息，并明确复现步骤与日志、截图要求，便于定位问题。
 
-Windows 提供安装器和 ZIP 便携包，Linux 和 macOS 包继续标记为 Preview。本候选用于安装测试；视觉验收和所有外部 CLI 的实际关窗恢复仍需单独验证。
+Windows x64 提供安装器和 ZIP 便携包，Windows ARM64 提供原生便携 ZIP；Windows 安装器和自动安装仍仅支持 x64；macOS 打包应用支持应用内安装。Linux x64 包及 macOS Apple Silicon／Intel DMG 继续标记为 Preview。
 
 ### Contributors
 
-<a href="https://github.com/Traveritas"><img src="https://github.com/Traveritas.png?size=96" width="64" height="64" alt="@Traveritas avatar"></a><a href="https://github.com/galact-byte"><img src="https://github.com/galact-byte.png?size=96" width="64" height="64" alt="@galact-byte avatar"></a><a href="https://github.com/Kuddev"><img src="https://github.com/Kuddev.png?size=96" width="64" height="64" alt="@Kuddev avatar"></a>
+<a href="https://github.com/ZiChuanLan"><img src="https://github.com/ZiChuanLan.png?size=96" width="64" height="64" alt="@ZiChuanLan avatar"></a><a href="https://github.com/YinBuLiao"><img src="https://github.com/YinBuLiao.png?size=96" width="64" height="64" alt="@YinBuLiao avatar"></a><a href="https://github.com/Kuddev"><img src="https://github.com/Kuddev.png?size=96" width="64" height="64" alt="@Kuddev avatar"></a>
 
-- **[@Traveritas](https://github.com/Traveritas)** — Kimi Code integration. / Kimi Code 集成。([#197](https://github.com/Kuddev/pebrel/pull/197))
-- **[@galact-byte](https://github.com/galact-byte)** — CMD interrupts and activity, application colors and Pi notification outcomes. / CMD 中断与活动、应用配色及 Pi 通知结果。([#206](https://github.com/Kuddev/pebrel/pull/206), [#207](https://github.com/Kuddev/pebrel/pull/207), [#208](https://github.com/Kuddev/pebrel/pull/208), [#215](https://github.com/Kuddev/pebrel/pull/215), [#216](https://github.com/Kuddev/pebrel/pull/216))
-- **[@Kuddev](https://github.com/Kuddev)** — Desktop integration, notifications, restoration and editor fixes. / 桌面集成、通知、恢复及编辑器修复。([#221](https://github.com/Kuddev/pebrel/pull/221), [#225](https://github.com/Kuddev/pebrel/pull/225), [#227](https://github.com/Kuddev/pebrel/pull/227), [#231](https://github.com/Kuddev/pebrel/pull/231), [#232](https://github.com/Kuddev/pebrel/pull/232))
+- **[@ZiChuanLan](https://github.com/ZiChuanLan)** — SSH host names in the Shell picker, Quick Jump and command palette. / Shell 选择器、快速跳转及命令面板中的 SSH 主机名称。([#274](https://github.com/Kuddev/pebrel/pull/274))
+- **[@YinBuLiao](https://github.com/YinBuLiao)** — Tab-menu localization, macOS Command-click links, rate-limited update recovery and macOS installation. / 标签菜单多语言、macOS Command+点击链接、更新限流恢复及 macOS 安装。([#265](https://github.com/Kuddev/pebrel/pull/265), [#266](https://github.com/Kuddev/pebrel/pull/266), [#269](https://github.com/Kuddev/pebrel/pull/269))
+- **[@Kuddev](https://github.com/Kuddev)** — Hook execution and lifetime, repair installation, terminal links and colors, Explorer integration, configurable tab renaming and issue reporting. / Hook 执行与生命周期、修复安装、终端链接和颜色、资源管理器集成、可配置的标签重命名及问题反馈。([#257](https://github.com/Kuddev/pebrel/pull/257), [#260](https://github.com/Kuddev/pebrel/pull/260), [#261](https://github.com/Kuddev/pebrel/pull/261), [#262](https://github.com/Kuddev/pebrel/pull/262), [#263](https://github.com/Kuddev/pebrel/pull/263), [#264](https://github.com/Kuddev/pebrel/pull/264), [#272](https://github.com/Kuddev/pebrel/pull/272))
+
+---
 
 **SHA256**
 
-- `Pebrel-v1.9.0-linux-x64-preview.AppImage`: `PENDING FINAL BUILD`
-- `Pebrel-v1.9.0-linux-x64-preview.deb`: `PENDING FINAL BUILD`
-- `Pebrel-v1.9.0-linux-x64-preview.tar.gz`: `PENDING FINAL BUILD`
-- `Pebrel-v1.9.0-macos-arm64-preview.dmg`: `PENDING FINAL BUILD`
-- `Pebrel-v1.9.0-macos-x64-preview.dmg`: `PENDING FINAL BUILD`
-- `Pebrel-v1.9.0-windows-x64.zip`: `PENDING FINAL BUILD`
-- `Pebrel-v1.9.0-windows-x64-setup.exe`: `PENDING FINAL BUILD`
+Checksums will be filled from the final release artifacts. / 校验值将在最终发布产物生成后填写。
+
+- `Pebrel-v1.9.1-linux-x64-preview.AppImage`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-linux-x64-preview.deb`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-linux-x64-preview.tar.gz`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-macos-arm64-preview.dmg`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-macos-x64-preview.dmg`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-windows-x64.zip`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-windows-x64-setup.exe`: `PENDING FINAL BUILD`
+- `Pebrel-v1.9.1-windows-arm64.zip`: `PENDING FINAL BUILD`
+
+## 1.9.0 - 2026-09-22
+
+### English
+
+#### Added
+
+- Added a native Windows ARM64 portable ZIP, alongside the Windows x64 installer and portable ZIP. ARM64 builds use a native runner and include matching ARM64 Hook and console runtime binaries.
+- Added Kimi Code recognition, native session commands and managed lifecycle hooks, including its icon and terminal activity states.
+- Added a dedicated Agents settings page for Claude Code, Codex, OpenCode, Cursor Agent, Kimi Code, Pi, Oh My Pi, GitHub Copilot and Grok. It shows detected CLI paths and actual Hook installation status beside each integration switch. Automatic Hook management is available on Windows.
+- Added configurable notification duration: keep the existing defaults, choose 5, 10, 30 or 90 seconds, or keep notifications visible until dismissed. The selected duration takes precedence over an Agent's default banner lifetime.
+- Added a persistent terminal font-ligature setting, enabled by default and applied to open sessions without restarting them. Addresses [#220](https://github.com/Kuddev/pebrel/issues/220).
+- Added a Sponsors page under Settings → Home → Project and support, introducing Fluxion AI with its sign-up link.
+
+#### Fixed
+
+- Fixed Codex cold restoration using a Hook group identifier instead of the native conversation identity. Saved sessions with an older or unrecognized transcript filename retain their existing valid conversation ID.
+- Fixed missing Windows local Codex identities by recovering the native conversation ID and file path from the running process. Later lifecycle-only events retain the verified identity.
+- Fixed dead-end Codex restoration when a saved conversation no longer exists: recovery opens the native conversation chooser, including from CMD, and the tab menu offers an explicit conversation choice.
+- Fixed the session crash-loop breaker counting a launch as failed while a restored AI conversation was still unconfirmed. Normal exits with a Codex conversation waiting at its startup prompts no longer quarantine the whole workspace after three launches, and the saved conversation target is retained for the next launch.
+- Fixed shutdown getting stuck when some AI identities cannot be collected. Users can save the known state and exit; save errors and subsequently changed editor drafts still keep the application open.
+- Fixed AI failures and cancellations appearing as successful completion. Claude failure events and Pi retry-aware outcomes now use the shared result handling.
+- Fixed notification replacements retaining an old result or expiry deadline. A refreshed pane result uses the selected duration, and an older timer cannot dismiss its replacement.
+- Fixed supported AI confirmation actions by checking that the request is still current and completing the required key-down/key-up sequence. Windows notification activation restores the corresponding application window.
+- Fixed WSL Hook installation and event delivery to use the distribution's own user configuration. Command completions include the distribution and user options.
+- Fixed inherited Ctrl+C suppression preventing interruption of CMD child commands, while preserving selection copying.
+- Fixed native CMD command activity detection, multiline input and echoed text at pending-wrap boundaries.
+- Fixed application 256-color blocks being overwritten by terminal prompt colors, while retaining explicit custom color overrides.
+- Fixed saved SSH hosts ignoring the available system SSH agent in automatic authentication mode.
+- Fixed terminal working-directory copying to use the path reported by the shell, including guest paths, while normal selection copying retains the original text.
+- Fixed terminal and answer-reader opening of supported local Markdown links, file URIs and relative paths. Paths containing spaces, Chinese text or parentheses resolve against the originating pane's directory; missing paths produce visible feedback. Addresses [#203](https://github.com/Kuddev/pebrel/issues/203).
+- Fixed file-editor selections and search matches blending into light and dark backgrounds. Plain-text and code editors reveal the configured workspace background, and the active line follows the theme.
+- Fixed long Markdown outline headings overlapping adjacent rows. Full titles remain available through tooltips and copying. Addresses [#184](https://github.com/Kuddev/pebrel/issues/184).
+- Fixed interrupted Markdown drags leaving a selection that continues to grow when the pointer moves without a pressed button.
+- Fixed code-language menus extending beyond narrow windows and kept their search field and keyboard activation usable.
+- Fixed SSH host icons appearing off-center because a font glyph's visible outline differs from its text advance.
+- Removed the duplicate title preview shown while dragging a tab.
+
+#### Improved
+
+- Markdown opens in read-only rendered mode. Text selection, copying, code copying and formula actions remain available; editing requires an explicit switch to source mode.
+- Code-block language selection remains available in the reader. It changes syntax highlighting without rewriting the Markdown, survives scrolling away and back, and leaves copied code unchanged.
+- Kept source-mode drafts when returning to the reader, while preventing undo/redo shortcuts from editing the document in read-only mode.
+- Bounded Markdown presentation work with virtual rows, visible-block image ownership and release of inactive document layouts. These changes reduce repeated work without imposing a machine-specific memory or speed promise.
+- Reused repository snapshots and rendered visible Git/SVN drawer rows to reduce repeated work in large repositories.
+- Centered the Agents page, enlarged all nine Agent marks using SVG assets, and separated CLI discovery from Hook installation status. Long paths remain accessible through tooltips.
+- Improved settings search, SSH connection cards and filters, file-panel control alignment, and command-group navigation, ordering and add actions.
+- Preserved other integrations and user-owned configuration when installing or removing a managed Agent Hook.
+- Temporarily hid the backup entry from the settings sidebar and search; cloud-backup controls are not exposed in this release.
+
+Windows x64 includes an installer and portable ZIP; Windows ARM64 includes a native portable ZIP. The installer and in-app automatic installation remain x64-only. Linux x64 packages and macOS Apple Silicon/Intel DMGs retain their Preview designation. macOS requires version 14 or later. Molecular structure rendering remains disabled.
+
+### 中文
+
+#### 新增
+
+- 新增：Windows ARM64 原生便携 ZIP，与 Windows x64 安装器及便携 ZIP 一同提供。ARM64 使用原生运行器构建，并配套 ARM64 Hook 辅助程序与控制台运行时。
+- 新增：Kimi Code 识别、原生会话命令和受管理的生命周期 Hook，包含品牌图标及终端活动状态。
+- 新增：独立 Agents 设置页，覆盖 Claude Code、Codex、OpenCode、Cursor Agent、Kimi Code、Pi、Oh My Pi、GitHub Copilot 和 Grok。每项显示检测到的 CLI 路径，并在开关旁显示实际 Hook 安装状态；自动 Hook 管理适用于 Windows。
+- 新增：通知停留时长设置：保持既有默认值，或选择 5、10、30、90 秒以及手动关闭。用户选择的时长优先于 Agent 自带的横幅默认时长。
+- 新增：可持久保存的终端字体连字开关，默认开启，并可应用于已打开的会话，无需重启终端。对应 [#220](https://github.com/Kuddev/pebrel/issues/220)。
+- 新增：设置首页「项目与支持」中的赞助商页面，介绍赞助商 Fluxion AI 并提供注册链接。
+
+#### 修复
+
+- 修复：Codex 冷恢复误用 Hook 分组标识而非原生对话身份的问题。旧快照中的会话文件名无法识别时，保留原有有效对话 ID。
+- 修复：Windows 本地 Codex 身份缺失的问题，可从运行中的进程找回原生对话 ID 和文件路径；后续仅包含生命周期信息的事件会保留已核验身份。
+- 修复：保存的 Codex 对话不存在时恢复流程无法继续的问题：包括 CMD 在内，可打开原生会话选择器，标签菜单也提供主动选择对话的入口。
+- 修复：已恢复的 AI 对话尚未确认时，本次启动被会话断路器误计为失败的问题。Codex 对话停在启动提示上、正常退出三次后，不再把整个工作区隔离到 `session.crashed.json`；已保存的对话目标保留至下次启动。
+- 修复：部分 AI 身份无法取得时关闭流程卡住的问题。用户可以保存已知状态并退出；保存失败或编辑器草稿随后发生变化时仍保持应用打开。
+- 修复：AI 失败和取消事件被显示为成功完成的问题，Claude 失败事件及 Pi 重试后的结果统一进入通知结果处理。
+- 修复：通知替换后残留旧结果或旧到期时间的问题。新的窗格结果遵循选定时长，旧计时器不能关闭替换后的通知。
+- 修复：受支持 AI 确认动作：发送前检查请求仍然有效，并完成必要的按下、释放按键序列；Windows 通知激活时恢复对应应用窗口。
+- 修复：WSL Hook 安装与事件传递，使用发行版自身的用户配置；命令补全同步包含发行版和用户选项。
+- 修复：继承的 Ctrl+C 忽略状态导致 CMD 子命令无法中断的问题，同时保留选区复制。
+- 修复：原生 CMD 命令活动检测、多行输入以及等待折行边界的回显文本跟踪。
+- 修复：应用的 256 色块被终端提示符颜色覆盖的问题，保留明确配置的自定义颜色覆盖。
+- 修复：已保存 SSH 主机在自动认证时忽略可用系统 SSH 代理的问题。
+- 修复：终端工作目录复制，改为复制 Shell 上报的路径，包括访客环境路径；普通选区复制保留原始文字。
+- 修复：终端和回答阅读页打开受支持的本地 Markdown 链接、文件 URI 及相对路径的行为。含空格、中文或括号的路径按原窗格目录解析，路径缺失时提供可见反馈。对应 [#203](https://github.com/Kuddev/pebrel/issues/203)。
+- 修复：文件编辑器选区与查找命中融入浅色、深色背景的问题；普通文本和代码编辑器可透出已配置的工作区背景图，光标所在行跟随主题。
+- 修复：Markdown 目录长标题压住相邻行的问题，完整标题仍可通过悬停提示和复制取得。对应 [#184](https://github.com/Kuddev/pebrel/issues/184)。
+- 修复：Markdown 拖选被中断后，未按住鼠标移动仍继续扩大选区的问题。
+- 修复：代码语言菜单在窄窗口中越界的问题，并保持搜索框和键盘操作可用。
+- 修复：SSH 主机图标因字体可见轮廓与排版宽度不同而偏离中心的问题。
+- 修复：移除拖动标签时重复出现的标题预览。
+
+#### 改进
+
+- 改进：Markdown 默认以只读方式渲染，保留文字选择、复制、代码复制及公式操作；编辑需要显式切换到源码模式。
+- 改进：阅读模式仍可选择代码块语言，只改变语法高亮，不改写 Markdown；滚动离开再返回后保留选择，复制得到的代码内容不变。
+- 改进：从源码模式返回阅读页时保留草稿，同时阻止只读模式下的撤销、重做快捷键修改文档。
+- 改进：Markdown 使用虚拟列表、可见代码块和图片资源管理，并释放非活动文档的布局缓存，减少重复工作；不把单机结果写成固定的内存或速度承诺。
+- 改进：Git／SVN 抽屉复用仓库快照，仅渲染可见条目，减少大型仓库中的重复工作。
+- 改进：Agents 页面整体居中，九种 Agent 图标使用放大的 SVG 资源；CLI 是否存在与 Hook 是否安装分别展示，长路径可通过悬停提示查看。
+- 改进：设置搜索、SSH 连接卡片和筛选、文件面板控件对齐，以及命令分组的导航、排序和新增操作。
+- 改进：安装或移除受管理的 Agent Hook 时，保留其他集成及用户已有配置。
+- 改进：暂时隐藏设置侧栏和搜索中的备份入口，本版不开放云备份控件。
+
+Windows x64 提供安装器和 ZIP 便携包，Windows ARM64 提供原生便携 ZIP；安装器和应用内自动安装仍仅支持 x64。Linux x64 包及 macOS Apple Silicon／Intel DMG 继续标记为 Preview。macOS 最低版本为 14。分子结构渲染仍处于禁用状态。
+
+### Contributors
+
+<a href="https://github.com/Traveritas"><img src="https://github.com/Traveritas.png?size=96" width="64" height="64" alt="@Traveritas avatar"></a><a href="https://github.com/galact-byte"><img src="https://github.com/galact-byte.png?size=96" width="64" height="64" alt="@galact-byte avatar"></a><a href="https://github.com/821869798"><img src="https://github.com/821869798.png?size=96" width="64" height="64" alt="@821869798 avatar"></a><a href="https://github.com/tataraDM"><img src="https://github.com/tataraDM.png?size=96" width="64" height="64" alt="@tataraDM avatar"></a><a href="https://github.com/Aschenbath"><img src="https://github.com/Aschenbath.png?size=96" width="64" height="64" alt="@Aschenbath avatar"></a><a href="https://github.com/Kuddev"><img src="https://github.com/Kuddev.png?size=96" width="64" height="64" alt="@Kuddev avatar"></a>
+
+- **[@Traveritas](https://github.com/Traveritas)** — Kimi Code hooks, recognition and branding. / Kimi Code Hook、识别和品牌图标。([#197](https://github.com/Kuddev/pebrel/pull/197))
+- **[@galact-byte](https://github.com/galact-byte)** — CMD interrupts and activity, terminal application colors and Pi notification outcomes. / CMD 中断与活动、终端应用配色及 Pi 通知结果。([#206](https://github.com/Kuddev/pebrel/pull/206), [#207](https://github.com/Kuddev/pebrel/pull/207), [#208](https://github.com/Kuddev/pebrel/pull/208), [#215](https://github.com/Kuddev/pebrel/pull/215), [#216](https://github.com/Kuddev/pebrel/pull/216))
+- **[@821869798](https://github.com/821869798)** — Markdown links and local file opening from terminals and the answer reader. / 终端及回答阅读页的 Markdown 链接和本地文件打开。([#204](https://github.com/Kuddev/pebrel/pull/204))
+- **[@tataraDM](https://github.com/tataraDM)** — Readable single-line Markdown outline headings. / 修复 Markdown 目录长标题挤压。([#191](https://github.com/Kuddev/pebrel/pull/191))
+- **[@Aschenbath](https://github.com/Aschenbath)** — Configurable notification duration and persistent notifications. / 可配置的通知停留时长和常驻通知。([#131](https://github.com/Kuddev/pebrel/pull/131))
+- **[@Kuddev](https://github.com/Kuddev)** — Desktop integration, actionable notifications, session restoration, Markdown reader, Agents UI, review and release integration. / 桌面整合、可操作通知、会话恢复、Markdown 阅读、Agents 界面、审核及发布整合。([#210](https://github.com/Kuddev/pebrel/pull/210), [#217](https://github.com/Kuddev/pebrel/pull/217), [#221](https://github.com/Kuddev/pebrel/pull/221), [#222](https://github.com/Kuddev/pebrel/pull/222), [#225](https://github.com/Kuddev/pebrel/pull/225), [#227](https://github.com/Kuddev/pebrel/pull/227), [#231](https://github.com/Kuddev/pebrel/pull/231), [#232](https://github.com/Kuddev/pebrel/pull/232))
+
+---
+
+**SHA256**
+
+- `Pebrel-v1.9.0-linux-x64-preview.AppImage`: `4da5ea590a82ab4f89dca14df1399e7c2cd27fa4fe308da6f0e95b8aa9ae7d22`
+- `Pebrel-v1.9.0-linux-x64-preview.deb`: `bb6fff964942b750a794f2ea148e851719430dfffd9bb086a13e2f1e67d87722`
+- `Pebrel-v1.9.0-linux-x64-preview.tar.gz`: `6526ed5f2f883bb5ca9600d2685c929056fbae9f2450259f34d65093a18deda6`
+- `Pebrel-v1.9.0-macos-arm64-preview.dmg`: `daf2c6c381fbdf84c33c132e9c6c247e9f9dc6e86292cc5be855e635e6cfa6f3`
+- `Pebrel-v1.9.0-macos-x64-preview.dmg`: `9f3f1465be9e1f3489be09ccf336d5bdc0a6ae40185062f677a6e857d47e1fe0`
+- `Pebrel-v1.9.0-windows-x64.zip`: `1c219946450c7d93993394fd6d40c6e234d77547c9b4a98106c0d33ada9c27f9`
+- `Pebrel-v1.9.0-windows-x64-setup.exe`: `52cefcdae9cd98035bcdd45944c020fc9acf9c2c497147ba337ed15069a07fe6`
+- `Pebrel-v1.9.0-windows-arm64.zip`: `e2d062089afb19ddb9e3d078cc7f460a1d67cb36d95400cebab837f9fabda092`
 
 ## 1.8.2 - 2026-09-17
 

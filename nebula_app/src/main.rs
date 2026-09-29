@@ -84,6 +84,7 @@ mod markdown;
 mod math;
 mod message_bar;
 mod migrate;
+mod mobile_connection;
 mod motion;
 mod mux;
 mod nebula_history;
@@ -91,6 +92,7 @@ mod notify;
 #[cfg(windows)]
 mod panic;
 mod platform;
+mod plugins;
 #[cfg(all(unix, feature = "legacy-shell"))]
 mod polling;
 mod process_tree;
@@ -166,6 +168,10 @@ use crate::macos::locale;
 use crate::polling::{IoListener, ipc};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    #[cfg(all(target_os = "macos", feature = "gpui-shell"))]
+    if let Some(code) = update_download::handoff::macos::run_helper_if_requested() {
+        std::process::exit(code);
+    }
     if let Some(code) = platform::ai_session_identity::run_helper_if_requested() {
         std::process::exit(code);
     }
@@ -254,6 +260,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(Subcommands::Msg(options)) => msg(options)?,
         Some(Subcommands::Migrate(options)) => migrate::migrate(options),
         Some(Subcommands::Config(options)) => std::process::exit(config_cli::run(options)),
+        Some(Subcommands::Plugin(options)) => std::process::exit(plugins::cli::run(options)),
         #[cfg(windows)]
         Some(Subcommands::NotifyTest) => std::process::exit(crate::notify::notify_test()),
         #[cfg(windows)]

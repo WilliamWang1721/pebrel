@@ -128,6 +128,8 @@ pub struct TextFileView {
     inline_views:
         Rc<RefCell<std::collections::BTreeMap<(usize, usize), gpui::WeakEntity<TextViewState>>>>,
     preview_extensions: gpui_component::text::MarkdownExtensions,
+    /// Reading-only syntax choices survive virtual row eviction, but never change source.
+    preview_code_languages: std::collections::HashMap<(usize, usize), SharedString>,
     preview_images: Entity<image_cache::DocumentImageCache>,
     scroll: ListState,
     preview_selection_scroll_epoch: u64,
@@ -143,6 +145,7 @@ pub struct TextFileView {
     selected_heading: Option<usize>,
     all_selected: bool,
     revision: u64,
+    content_revision: u64,
     preview_task: Option<Task<()>>,
     _input_subscription: Subscription,
 }
@@ -205,6 +208,7 @@ impl TextFileView {
         });
         let subscription = cx.subscribe_in(&input, window, |this, _, event, _, cx| {
             if matches!(event, InputEvent::Change) {
+                this.content_revision = this.content_revision.wrapping_add(1);
                 if this.markdown {
                     let input = this.input.read(cx);
                     this.history.record_rope(input.text());
@@ -229,6 +233,7 @@ impl TextFileView {
         let mut this = Self {
             preview_images: image_cache::DocumentImageCache::new(cx.entity_id(), cx),
             preview_extensions,
+            preview_code_languages: Default::default(),
             path,
             title,
             input,
@@ -243,7 +248,8 @@ impl TextFileView {
             notice: None,
             markdown,
             preview: markdown,
-            live_mode: markdown,
+            // Rendered Markdown opens as a selectable reader. Editing is explicit via source mode.
+            live_mode: false,
             live_edit: None,
             render_active: true,
             preview_stale: false,
@@ -269,6 +275,7 @@ impl TextFileView {
             selected_heading: None,
             all_selected: false,
             revision: 0,
+            content_revision: 0,
             preview_task: None,
             _input_subscription: subscription,
         };
@@ -289,6 +296,19 @@ impl TextFileView {
     }
     pub fn is_saving(&self) -> bool {
         self.saving
+    }
+
+    pub(super) fn reader_revision(&self) -> Option<u64> {
+        (!self.loading && self.document.is_some()).then_some(self.content_revision)
+    }
+
+    pub(super) fn reader_snapshot(&self, cx: &App) -> Option<(gpui_component::Rope, u64)> {
+        // Rope 克隆共享不可变节点；编码和分块放到后台，不在 UI 线程复制整篇文档。
+        self.reader_revision().map(|revision| (self.input.read(cx).text().clone(), revision))
+    }
+
+    pub(super) fn reader_is_remote(&self) -> bool {
+        self.source.is_remote()
     }
 
     pub(super) fn reader_focus(&self) -> bool {
@@ -373,6 +393,7 @@ impl TextFileView {
 
     fn load(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.loading = true;
+        self.content_revision = self.content_revision.wrapping_add(1);
         self.revision += 1;
         self.preview_task = None;
         let path = self.path.clone();
@@ -550,6 +571,7 @@ impl TextFileView {
 
     fn apply_outline(&mut self, outline: Outline, cx: &mut Context<Self>) {
         self.preview_stale = false;
+        self.preview_code_languages.clear();
         self.inline_views.borrow_mut().clear();
         let top = self.scroll.logical_scroll_top();
         self.blocks = Rc::new(RefCell::new(vec![None; outline.blocks.len()]));
