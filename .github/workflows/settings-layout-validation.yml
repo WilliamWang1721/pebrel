@@ -1,0 +1,10 @@
+name: Validate settings layout
+on:
+  push:
+    branches: [ci/settings-layout-consistency]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    uses: ./.github/workflows/linux-lua.yml
