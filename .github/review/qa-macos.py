@@ -84,6 +84,7 @@ int main(int argc, const char **argv) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         if (argc > 1) {
+            [NSApp activateIgnoringOtherApps:YES];
             [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound completionHandler:^(BOOL granted, NSError *error) { request_error = error.code; request_granted = granted; error_is_un = [error.domain isEqualToString:@"UNErrorDomain"]; print_status(); }];
         } else { print_status(); }
         [[NSRunLoop currentRunLoop] run];
@@ -99,32 +100,43 @@ int main(int argc, const char **argv) {
     try:
         deadline = time.monotonic() + 25
         while proc.poll() is None and time.monotonic() < deadline:
-            clicked = apple('''tell application "System Events"
+            flags = apple('''tell application "System Events"
+set sawPebrel to false
+set sawProbe to false
+set sawAllow to false
+set sawNotifications to false
+set clickedPermission to false
 repeat with procRef in application processes
 try
 repeat with win in windows of procRef
-if exists button "Allow" of win then
 set labels to {}
+set allowElement to missing value
 repeat with e in entire contents of win
 try
 set end of labels to value of e as text
 end try
 try
 set end of labels to name of e as text
+if role of e is "AXButton" and (name of e is "Allow" or name of e is "Allow Notifications") then set allowElement to e
 end try
 end repeat
-if labels as text contains "Pebrel" then
-click button "Allow" of win
-return "allowed synthetic Pebrel notification permission"
-end if
+set textLabels to labels as text
+if textLabels contains "Pebrel" then set sawPebrel to true
+if textLabels contains "permission-probe" then set sawProbe to true
+if textLabels contains "notification" then set sawNotifications to true
+if allowElement is not missing value then set sawAllow to true
+if (textLabels contains "Pebrel" or textLabels contains "permission-probe") and textLabels contains "notification" and allowElement is not missing value then
+click allowElement
+set clickedPermission to true
 end if
 end repeat
 end try
 end repeat
-return "waiting"
+return (sawPebrel as integer) & "," & (sawProbe as integer) & "," & (sawAllow as integer) & "," & (sawNotifications as integer) & "," & (clickedPermission as integer) as text
 end tell''').strip()
-            if clicked == 'allowed synthetic Pebrel notification permission':
-                permission_diagnostics['synthetic_permission_prompt_accepted'] = True
+            values = [bool(int(v)) for v in flags.split(',')]
+            for label, value in zip(['permission_prompt_mentions_Pebrel', 'permission_prompt_mentions_probe', 'permission_prompt_has_Allow', 'permission_prompt_mentions_notifications', 'synthetic_permission_prompt_accepted'], values):
+                permission_diagnostics[label] = permission_diagnostics.get(label, False) or value
             time.sleep(.5)
         stdout, _ = proc.communicate(timeout=5)
         return [int(v) for v in stdout.strip().split(',')]
@@ -145,8 +157,12 @@ def enable_test_notification_permission(executable):
             permission_diagnostics['permission_request_error_code'] = values[1]
             permission_diagnostics['permission_request_granted'] = bool(values[2])
             permission_diagnostics['permission_request_error_is_UNErrorDomain'] = bool(values[3])
-        except (AssertionError, subprocess.SubprocessError, ValueError, OSError):
-            permission_diagnostics['synthetic_permission_request_failed'] = True
+        except subprocess.TimeoutExpired:
+            permission_diagnostics['permission_request_timed_out'] = True
+        except AssertionError:
+            permission_diagnostics['permission_request_helper_failed'] = True
+        except (ValueError, OSError):
+            permission_diagnostics['permission_request_invalid_result'] = True
         return
     if permission_diagnostics['initial_notification_authorization_status'] != 1:
         return
