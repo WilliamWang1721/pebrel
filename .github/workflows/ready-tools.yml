@@ -1,0 +1,27 @@
+name: Pinned review formatter
+on:
+  push:
+    branches: [codex/ready-six-source-20260930]
+    paths: [.github/workflows/ready-tools.yml]
+permissions:
+  contents: read
+jobs:
+  formatter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Package the pinned formatter only
+        shell: bash
+        run: |
+          mkdir -p review-tools
+          cp "$(rustup which rustfmt)" review-tools/rustfmt
+          ldd review-tools/rustfmt >review-tools/ldd.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-rustfmt
+          path: review-tools/
+          retention-days: 3
