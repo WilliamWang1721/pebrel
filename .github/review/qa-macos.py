@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -60,7 +61,7 @@ def bundle(folder):
     return executable
 
 
-def start(executable, name, configured=True, args=()):
+def start(executable, name, configured=True, args=(), launch_services=False):
     env = dict(os.environ)
     for key in ['PEBREL_CONFIG_DIR', 'NEBULA_CONFIG_DIR', 'PEBREL_CONFIG_FILE', 'NEBULA_CONFIG_FILE', 'PEBREL_GPUI_CONFIG', 'NEBULA_GPUI_CONFIG']:
         env.pop(key, None)
@@ -71,7 +72,10 @@ def start(executable, name, configured=True, args=()):
         env['PEBREL_CONFIG_DIR'] = str(config)
     log = (output / (name + '.log')).open('w')
     env['PEBREL_EXTRA_LOG_TARGETS'] = 'pebrel'
-    p = subprocess.Popen([str(executable), '-vv', *args], env=env, stdout=log, stderr=subprocess.STDOUT)
+    command = [str(executable), '-vv', *args]
+    if launch_services:
+        command = ['open', '-n', '-W', '--stdout', str(output / (name + '.log')), '--stderr', str(output / (name + '.err.log')), '--env', 'PEBREL_CONFIG_DIR=' + env['PEBREL_CONFIG_DIR'], '--env', 'PEBREL_EXTRA_LOG_TARGETS=pebrel', str(executable.parents[2]), '--args', '-vv', *args]
+    p = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
     processes.append((p, log))
     return p, env
 
@@ -174,9 +178,10 @@ try:
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
         notice = 'Pebrel foreground acceptance 20260930'
-        p, env = start(executable, 'notification', args=['-e', '/bin/zsh', '-l', '-c', f'sleep 12; printf "\\033]9;{notice}\\007"; sleep 45'])
+        p, env = start(executable, 'notification', launch_services=True, args=['-e', '/bin/zsh', '-l', '-c', f'sleep 12; printf "\\033]9;{notice}\\007"; sleep 45'])
         wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'notification source window exists')
-        apple('set frontmost of p to true', p.pid)
+        app_pid = wait_for(lambda: int(run(['pgrep', '-f', re.escape(str(executable))]).strip().splitlines()[0]), 'Launch Services started the registered Pebrel application')
+        apple('set frontmost of p to true', app_pid)
         wait_for(lambda: 'system toast source' in (output / 'notification.log').read_text(), 'foreground OSC 9 reaches system delivery', 35)
         shot('01-foreground-notification')
         def center_labels():
