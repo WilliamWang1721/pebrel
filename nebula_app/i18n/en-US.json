@@ -78,7 +78,7 @@
       },
       "update": {
         "label": "Use proxy for software updates",
-        "description": "Uses the custom network proxy when selected; otherwise uses system or environment proxies. Turn off for direct update checks and downloads. Applies to the next operation."
+        "description": "When enabled, custom mode uses the HTTP/SOCKS network proxy; other modes use system or environment proxies. Turn off for direct update checks and downloads. Applies to the next operation."
       },
       "title": "Network proxy",
       "mode": {

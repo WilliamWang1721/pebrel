@@ -29,8 +29,9 @@ wrap it with certificate-verified TLS using the already locked tokio-rustls and
 WebPKI roots. The application gains direct dependency edges to these two existing
 packages; the settings crate retains zero production dependencies.
 
-The network pane saves on Enter/blur and before testing. Edits invalidate the
-existing request generation; old results cannot describe a changed node. The
+The network pane saves on Enter/blur and before testing. Actual text edits
+invalidate the existing request generation; unchanged Change notifications after
+Enter retain validation feedback. Old results cannot describe a changed node. The
 existing twelve-second total deadline also bounds DNS, proxy and TLS work.
 
 Update proxy use is independent of terminal proxy use. Disabled means an explicit

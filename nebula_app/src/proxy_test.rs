@@ -88,7 +88,7 @@ impl NetworkTestTarget {
 
     pub(crate) fn request(&self) -> String {
         format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: Pebrel-Network-Test\r\n\r\n",
+            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: Nebula-Network-Test\r\n\r\n",
             self.uri.path_and_query().map_or("/", |path| path.as_str()),
             self.uri.authority().expect("validated authority"),
         )

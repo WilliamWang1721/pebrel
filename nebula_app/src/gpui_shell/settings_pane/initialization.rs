@@ -371,14 +371,21 @@ impl SettingsPane {
                 .placeholder(nebula_settings::DEFAULT_NETWORK_TEST_URL)
                 .default_value(runtime.network_test_url.clone())
         });
+        let mut network_test_value = runtime.network_test_url.clone();
         subscriptions.push(cx.subscribe_in(
             &network_test_url_input,
             window,
-            |this: &mut Self, _, event: &InputEvent, _window, cx: &mut Context<Self>| {
+            move |this: &mut Self, input, event: &InputEvent, _window, cx: &mut Context<Self>| {
+                let value = input.read(cx).value().to_string();
                 if matches!(event, InputEvent::Change) {
-                    this.invalidate_proxy_test();
-                    cx.notify();
+                    // Enter can emit Change again without changing the text.
+                    if value != network_test_value {
+                        network_test_value = value;
+                        this.invalidate_proxy_test();
+                        cx.notify();
+                    }
                 } else if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    network_test_value = value;
                     this.commit_network_test_url(cx);
                 }
             },

@@ -6,7 +6,6 @@ fn network_node_input_and_update_proxy_switch_persist_through_real_controls(
     cx: &mut gpui::TestAppContext,
 ) {
     use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
-    use gpui::Focusable as _;
 
     let _lock = lock_theme_studio();
     let _settings = SettingsBytesGuard::capture();
@@ -27,10 +26,10 @@ fn network_node_input_and_update_proxy_switch_persist_through_real_controls(
     cx.simulate_resize(gpui::size(px(1000.0), px(900.0)));
     cx.update(|window, cx| {
         let _ = window.draw(cx);
-        pane.read(cx).network_test_url_input.read(cx).focus_handle(cx).focus(window, cx);
     });
     let input = cx.debug_bounds("network-test-url").expect("test node field is rendered");
     assert!(input.size.width >= px(80.0));
+    cx.simulate_click(input.center(), gpui::Modifiers::default());
     let select_all = if crate::platform::Platform::current() == crate::platform::Platform::MacOS {
         "cmd-a"
     } else {
@@ -41,20 +40,29 @@ fn network_node_input_and_update_proxy_switch_persist_through_real_controls(
     cx.simulate_keystrokes("enter");
     cx.run_until_parked();
     assert_eq!(RuntimeSettings::load().network_test_url, "https://example.org:8443/health?probe=1");
+    cx.simulate_click(input.center(), gpui::Modifiers::default());
     cx.simulate_keystrokes(select_all);
     cx.simulate_input("not a URL");
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| pane.network_test_url_input.read(cx).value().to_string()),
+        "not a URL"
+    );
     cx.simulate_keystrokes("enter");
     cx.run_until_parked();
     assert_eq!(RuntimeSettings::load().network_test_url, "https://example.org:8443/health?probe=1");
-    assert!(pane.read_with(cx, |pane, _| matches!(
-        pane.proxy_test_status,
-        crate::display::ProxyTestStatus::Complete {
-            outcome: crate::proxy_test::ProxyTestOutcome::Failed(
-                crate::proxy_test::ProxyTestFailure::InvalidTarget
-            ),
-            ..
-        }
-    )));
+    let status = pane.read_with(cx, |pane, _| pane.proxy_test_status.clone());
+    assert!(
+        matches!(
+            status,
+            crate::display::ProxyTestStatus::Complete {
+                outcome: crate::proxy_test::ProxyTestOutcome::Failed(
+                    crate::proxy_test::ProxyTestFailure::InvalidTarget
+                ),
+                ..
+            }
+        ),
+        "{status:?}"
+    );
     for enabled in [false, true] {
         cx.update(|window, cx| {
             let _ = window.draw(cx);
