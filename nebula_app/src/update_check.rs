@@ -300,7 +300,8 @@ fn fetch_latest_release() -> Result<LatestRelease, String> {
         let agent = test_source::agent(Duration::from_secs(10));
         return fetch_release_with_agent(&agent, &url);
     }
-    let agent = crate::update_proxy::agent(RELEASES_API, Duration::from_secs(10));
+    let agent = crate::update_proxy::agent(RELEASES_API, Duration::from_secs(10))
+        .map_err(|error| error.to_string())?;
     fetch_release_with_fallback(&agent, RELEASES_API, fallback::fetch_latest)
 }
 

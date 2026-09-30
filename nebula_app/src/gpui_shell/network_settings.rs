@@ -1,12 +1,14 @@
 //! 设置页的网络代理区（`SettingsPane` 的网络专属 impl 拆分文件）。
 //!
-//! 合同对齐旧壳 `NebulaSettingsSection::Proxy`：测试横幅在最前，下面是
-//! 「代理方式」；只有 Custom 才展开协议下拉 + 地址。绕过列表、扫描、跳板
+//! 测试节点与结果在代理方式之前；只有 Custom 才展开协议下拉 + 地址。绕过列表、扫描、跳板
 //! 和每主机覆盖当前都不画。出网测试走 `ssh_session::start_proxy_test`，
-//! 读的是落盘后的 `SshProxyConfig::load_global`。
+//! 读的是落盘后的代理配置与测试节点。
 
 use gpui::prelude::FluentBuilder as _;
-use gpui::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui::{
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Styled as _,
+    div, px,
+};
 use gpui_component::input::InputEvent;
 use nebula_settings::ProxyModeName;
 
@@ -52,6 +54,33 @@ pub(super) fn apply_proxy_test_result(
 }
 
 impl SettingsPane {
+    pub(super) fn commit_network_test_url(&mut self, cx: &mut Context<Self>) -> bool {
+        let typed = self.network_test_url_input.read(cx).value().to_string();
+        let url = if typed.trim().is_empty() {
+            nebula_settings::DEFAULT_NETWORK_TEST_URL
+        } else {
+            typed.trim()
+        };
+        if url == self.runtime.network_test_url {
+            return true;
+        }
+        let result = crate::proxy_test::NetworkTestTarget::parse(url).map(|_| ()).and_then(|()| {
+            self.try_persist(&[("network_test_url", url.to_owned())], cx).map_err(|error| {
+                crate::proxy_test::ProxyTestFailure::SaveSettings(error.to_string())
+            })
+        });
+        if let Err(error) = result {
+            self.invalidate_proxy_test();
+            self.proxy_test_status = ProxyTestStatus::Complete {
+                outcome: crate::proxy_test::ProxyTestOutcome::Failed(error),
+                elapsed_ms: 0,
+            };
+            cx.notify();
+            return false;
+        }
+        true
+    }
+
     pub(super) fn invalidate_proxy_test(&mut self) {
         self.proxy_test_seq = self.proxy_test_seq.wrapping_add(1);
         self.proxy_test_status = ProxyTestStatus::Idle;
@@ -98,6 +127,9 @@ impl SettingsPane {
         }
         // 先落盘当前输入，再跑测试：验证的是下一条真实连接会读到的值。
         self.commit_proxy_address(window, cx);
+        if !self.commit_network_test_url(cx) {
+            return;
+        }
         self.proxy_test_seq = self.proxy_test_seq.wrapping_add(1);
         let request_id = self.proxy_test_seq;
         self.proxy_test_status = ProxyTestStatus::Running;
@@ -173,6 +205,21 @@ impl SettingsPane {
         let custom = shows_manual_proxy_address(self.runtime.ssh_proxy_mode);
         let language = crate::gpui_shell::config::ui_language(cx);
         self.group(language.tr("settings.network.title"), cx)
+            .child(
+                self.row(
+                    language.text(crate::i18n::Message::SettingsNetworkTargetLabel),
+                    language.text(crate::i18n::Message::SettingsNetworkTargetDescription),
+                    div()
+                        .debug_selector(|| "network-test-url".to_owned())
+                        .flex_1()
+                        .min_w_0()
+                        .max_w(px(360.0))
+                        .child(Input::new(&self.network_test_url_input).aria_label(
+                            language.text(crate::i18n::Message::SettingsNetworkTargetLabel),
+                        )),
+                    cx,
+                ),
+            )
             .child(self.proxy_test_banner(cx))
             .child(div().h(px(PROXY_TEST_GAP)).w_full().flex_shrink_0())
             .child(self.proxy_mode_row(cx))
@@ -182,6 +229,13 @@ impl SettingsPane {
                 language.text(crate::i18n::Message::SettingsNetworkTerminalLabel),
                 language.text(crate::i18n::Message::SettingsNetworkTerminalDescription),
                 self.runtime.terminal_proxy,
+                cx,
+            ))
+            .child(self.switch_row(
+                "update_proxy",
+                language.text(crate::i18n::Message::SettingsNetworkUpdateLabel),
+                language.text(crate::i18n::Message::SettingsNetworkUpdateDescription),
+                self.runtime.update_proxy,
                 cx,
             ))
     }

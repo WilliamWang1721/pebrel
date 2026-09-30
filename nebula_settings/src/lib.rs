@@ -15,6 +15,8 @@
 
 use std::collections::HashMap;
 
+pub const DEFAULT_NETWORK_TEST_URL: &str = "http://example.com/";
+
 mod agent_hooks;
 pub use agent_hooks::AgentHook;
 mod app_icon;
@@ -1126,6 +1128,8 @@ pub struct RuntimeSettings {
     pub ssh_proxy_mode: ProxyModeName,
     pub ssh_proxy_url: String,
     pub ssh_proxy_no_proxy: String,
+    pub network_test_url: String,
+    pub update_proxy: bool,
     pub quick_terminal_hotkey: String,
     pub quick_terminal_mode: QuickTerminalMode,
     /// Remembered logical size; independent of monitor DPI.
@@ -1310,6 +1314,11 @@ impl RuntimeSettings {
                 .unwrap_or_default(),
             ssh_proxy_url: raw.value("ssh_proxy_url").unwrap_or_default().to_owned(),
             ssh_proxy_no_proxy: raw.value("ssh_proxy_no_proxy").unwrap_or_default().to_owned(),
+            network_test_url: raw
+                .value("network_test_url")
+                .unwrap_or(DEFAULT_NETWORK_TEST_URL)
+                .to_owned(),
+            update_proxy: raw.bool_on("update_proxy").unwrap_or(true),
             quick_terminal_mode: raw
                 .value("quick_terminal_mode")
                 .and_then(QuickTerminalMode::from_settings)

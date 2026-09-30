@@ -150,6 +150,7 @@ pub struct SettingsPane {
     scroll_speed_slider: Entity<SliderState>,
     scroll_speed_focus: FocusHandle,
     pub(super) proxy_url_input: Entity<InputState>,
+    pub(super) network_test_url_input: Entity<InputState>,
     pub(super) proxy_protocol_select: SharedSelect,
     pub(super) proxy_test_seq: u64,
     pub(super) proxy_test_status: crate::display::ProxyTestStatus,
@@ -253,7 +254,7 @@ impl SettingsPane {
         }
     }
 
-    fn try_persist(
+    pub(super) fn try_persist(
         &mut self,
         updates: &[(&str, String)],
         cx: &mut Context<Self>,
@@ -289,7 +290,10 @@ impl SettingsPane {
         let settings = crate::gpui_shell::config::Settings::load_with_runtime(theme, runtime);
         gpui_component::set_locale(settings.ui_language.gpui_component_locale());
         cx.set_global(settings);
-        if updates.iter().any(|(key, _)| matches!(*key, "ssh_proxy_mode" | "ssh_proxy_url")) {
+        if updates
+            .iter()
+            .any(|(key, _)| matches!(*key, "ssh_proxy_mode" | "ssh_proxy_url" | "network_test_url"))
+        {
             self.invalidate_proxy_test();
         }
         cx.emit(SettingsPaneEvent::Changed);
@@ -746,6 +750,7 @@ impl SettingsPane {
             "multiline_paste_confirm" => flag!(multiline_paste_confirm),
             "tab_close_visible" => flag!(tab_close_visible),
             "terminal_proxy" => flag!(terminal_proxy),
+            "update_proxy" => flag!(update_proxy),
             "refresh_environment" => flag!(refresh_environment),
             "powerline" => flag!(powerline),
             "ghost" => flag!(ghost),

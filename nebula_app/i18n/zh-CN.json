@@ -72,6 +72,14 @@
       "save_failed": "无法保存通知设置：{error}"
     },
     "network": {
+      "target": {
+        "label": "测试节点",
+        "description": "填写 HTTP 或 HTTPS 地址，可包含端口和路径。按 Enter 或离开输入框保存；留空恢复默认节点。HTTP 200–499 表示网络可达。"
+      },
+      "update": {
+        "label": "软件更新使用代理",
+        "description": "开启时使用自定义 HTTP/SOCKS 代理；其他代理模式使用系统或环境代理。关闭后更新检查和下载直连；下一次操作生效。"
+      },
       "title": "网络代理",
       "mode": {
         "label": "代理方式",
@@ -106,6 +114,8 @@
         "ssh_jump": "SSH {target}"
       },
       "failure": {
+        "invalid_target": "请输入有效的 HTTP 或 HTTPS 地址，不含账号密码或片段标识。",
+        "tls": "无法与测试节点建立安全连接：{error}",
         "load_settings": "读取代理设置失败：{error}",
         "invalid_settings": "代理设置无效：{error}",
         "timeout": "网络测试超时（{seconds} 秒无响应）",

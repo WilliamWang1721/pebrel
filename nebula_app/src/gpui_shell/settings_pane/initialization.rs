@@ -366,6 +366,30 @@ impl SettingsPane {
                 this.on_proxy_address_event(event, window, cx);
             },
         ));
+        let network_test_url_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(nebula_settings::DEFAULT_NETWORK_TEST_URL)
+                .default_value(runtime.network_test_url.clone())
+        });
+        let mut network_test_value = runtime.network_test_url.clone();
+        subscriptions.push(cx.subscribe_in(
+            &network_test_url_input,
+            window,
+            move |this: &mut Self, input, event: &InputEvent, _window, cx: &mut Context<Self>| {
+                let value = input.read(cx).value().to_string();
+                if matches!(event, InputEvent::Change) {
+                    // Enter can emit Change again without changing the text.
+                    if value != network_test_value {
+                        network_test_value = value;
+                        this.invalidate_proxy_test();
+                        cx.notify();
+                    }
+                } else if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    network_test_value = value;
+                    this.commit_network_test_url(cx);
+                }
+            },
+        ));
         let provider_store = crate::ai_providers::load();
         let active_provider = provider_store
             .providers
@@ -609,6 +633,7 @@ impl SettingsPane {
             scroll_speed_slider,
             scroll_speed_focus,
             proxy_url_input,
+            network_test_url_input,
             proxy_protocol_select,
             proxy_test_seq: 0,
             proxy_test_status: crate::display::ProxyTestStatus::Idle,

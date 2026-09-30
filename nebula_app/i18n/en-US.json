@@ -72,6 +72,14 @@
       "save_failed": "Could not save the notification setting: {error}"
     },
     "network": {
+      "target": {
+        "label": "Test node",
+        "description": "HTTP or HTTPS URL, including an optional port and path. Enter or leave the field to save; leave empty to restore the default. HTTP 200–499 confirms connectivity."
+      },
+      "update": {
+        "label": "Use proxy for software updates",
+        "description": "When enabled, custom mode uses the HTTP/SOCKS network proxy; other modes use system or environment proxies. Turn off for direct update checks and downloads. Applies to the next operation."
+      },
       "title": "Network proxy",
       "mode": {
         "label": "Proxy mode",
@@ -106,6 +114,8 @@
         "ssh_jump": "SSH {target}"
       },
       "failure": {
+        "invalid_target": "Enter a valid HTTP or HTTPS URL without credentials or a fragment.",
+        "tls": "Could not establish a secure connection to the test node: {error}",
         "load_settings": "Could not read proxy settings: {error}",
         "invalid_settings": "The proxy settings are invalid: {error}",
         "timeout": "The network test timed out after {seconds} seconds",

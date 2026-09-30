@@ -15,7 +15,8 @@ const TAG_PREFIX: &str = "https://github.com/Kuddev/pebrel/releases/tag/";
 pub(super) fn fetch_latest(status: u16) -> Result<LatestRelease, String> {
     log::info!("update-check: API returned HTTP {status}; checking official latest-release page");
     // Resolve proxy settings for github.com independently of api.github.com.
-    let agent = crate::update_proxy::agent(LATEST_PAGE, Duration::from_secs(10));
+    let agent = crate::update_proxy::agent(LATEST_PAGE, Duration::from_secs(10))
+        .map_err(|error| error.to_string())?;
     let language =
         LanguagePreference::from(nebula_settings::RuntimeSettings::load().language).resolved();
     let uri = redirected_uri(&agent, LATEST_PAGE).map_err(|error| {
@@ -32,7 +33,8 @@ pub(super) fn fetch_latest(status: u16) -> Result<LatestRelease, String> {
         "https://github.com/Kuddev/pebrel/releases/download/v{}/SHA256SUMS",
         release.version
     );
-    let agent = crate::update_proxy::agent(&url, Duration::from_secs(10));
+    let agent = crate::update_proxy::agent(&url, Duration::from_secs(10))
+        .map_err(|error| error.to_string())?;
     if let Ok(mut response) = agent.get(&url).header("User-Agent", "pebrel").call()
         && let Ok(text) = response.body_mut().with_config().limit(64 * 1024).read_to_string()
     {

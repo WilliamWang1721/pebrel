@@ -2,6 +2,83 @@ use super::*;
 
 #[cfg(feature = "gpui-test-support")]
 #[gpui::test]
+fn network_node_input_and_update_proxy_switch_persist_through_real_controls(
+    cx: &mut gpui::TestAppContext,
+) {
+    use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
+
+    let _lock = lock_theme_studio();
+    let _settings = SettingsBytesGuard::capture();
+    nebula_settings::persist_keys(&[("language", "en-US".into()), ("update_proxy", "1".into())])
+        .unwrap();
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
+    });
+    let mut pane_out = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let pane = cx.new(|cx| SettingsPane::new(window, cx));
+        pane.update(cx, |pane, _| pane.active_section = 5);
+        pane_out = Some(pane.clone());
+        gpui_component::Root::new(pane, window, cx)
+    });
+    let pane = pane_out.unwrap();
+    cx.simulate_resize(gpui::size(px(1000.0), px(900.0)));
+    cx.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+    let input = cx.debug_bounds("network-test-url").expect("test node field is rendered");
+    assert!(input.size.width >= px(80.0));
+    cx.simulate_click(input.center(), gpui::Modifiers::default());
+    let select_all = if crate::platform::Platform::current() == crate::platform::Platform::MacOS {
+        "cmd-a"
+    } else {
+        "ctrl-a"
+    };
+    cx.simulate_keystrokes(select_all);
+    cx.simulate_input("https://example.org:8443/health?probe=1");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(RuntimeSettings::load().network_test_url, "https://example.org:8443/health?probe=1");
+    cx.simulate_click(input.center(), gpui::Modifiers::default());
+    cx.simulate_keystrokes(select_all);
+    cx.simulate_input("not a URL");
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| pane.network_test_url_input.read(cx).value().to_string()),
+        "not a URL"
+    );
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(RuntimeSettings::load().network_test_url, "https://example.org:8443/health?probe=1");
+    let status = pane.read_with(cx, |pane, _| pane.proxy_test_status.clone());
+    assert!(
+        matches!(
+            status,
+            crate::display::ProxyTestStatus::Complete {
+                outcome: crate::proxy_test::ProxyTestOutcome::Failed(
+                    crate::proxy_test::ProxyTestFailure::InvalidTarget
+                ),
+                ..
+            }
+        ),
+        "{status:?}"
+    );
+    for enabled in [false, true] {
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let bounds =
+            cx.debug_bounds("nebula-switch-update_proxy").expect("update switch is rendered");
+        assert!(bounds.size.width > px(0.0) && bounds.bottom() <= px(900.0));
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(RuntimeSettings::load().update_proxy, enabled);
+        assert_eq!(pane.read_with(cx, |pane, _| pane.runtime.update_proxy), enabled);
+    }
+}
+
+#[cfg(feature = "gpui-test-support")]
+#[gpui::test]
 fn environment_refresh_switch_is_searchable_and_persists(cx: &mut gpui::TestAppContext) {
     use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
 
