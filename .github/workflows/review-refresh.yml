@@ -24,7 +24,7 @@ jobs:
           for number in 128 280 288 289 291 294; do
             git fetch --no-tags https://github.com/Kuddev/pebrel.git "refs/pull/$number/head:refs/heads/review-pr$number"
           done
-          git bundle create review-update.bundle refs/heads/review-main refs/heads/review-pr128 refs/heads/review-pr280 refs/heads/review-pr288 refs/heads/review-pr289 refs/heads/review-pr291 refs/heads/review-pr294 ^148c6559934991f2343ed5dfd23332cd2a722572 ^d4d453c90cad496535754a4571a9799dc7f2261d ^77a974d749df60866785ed48a4dec55df54af5ac ^9e07c9f2b5da3562c1787e2214f011fdaf917cfb ^4f9b99a99db0ef1c9e93b75d4e30dd017d841d79 ^97bfa96a1f38ff5c65d786faf911c8e998485fa6 ^611e13e817db96cb8d40abcc3ac8468d5d674179
+          git bundle create review-update.bundle refs/heads/review-main refs/heads/review-pr128 refs/heads/review-pr280 refs/heads/review-pr288 refs/heads/review-pr289 refs/heads/review-pr291 refs/heads/review-pr294 ^9d473b39ea0af4430367f90e5533f297022a6f96
           git for-each-ref --format='%(objectname) %(refname)' refs/heads/review- >review-refs.txt
           ls -lh review-update.bundle
       - uses: actions/upload-artifact@v4
