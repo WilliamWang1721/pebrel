@@ -1,14 +1,14 @@
 # Pebrel 六个 PR 的合并准备报告
 
-修复已普通推送，六个分支均已同步到上游 2.1.0 的 main `077595b4a4f1bda0be57e52324343785f69c5a3e`。尚未达到 100% Ready to Merge：最终 CI 未全部结束，另有维护者审批、Draft 状态和通知原生验收门槛。没有 merge PR 或 force push。记录时间：2026-09-30 18:10:05 UTC。
+修复已普通推送，六个分支均已同步到上游 2.1.0 的 main `077595b4a4f1bda0be57e52324343785f69c5a3e`。六个最终提交的 10 项必需检查全部通过；尚未达到 100% Ready to Merge，仍有维护者审批、Draft 状态和通知原生验收门槛。没有 merge PR 或 force push。记录时间：2026-09-30 18:26:52 UTC。
 
 | PR | 当前提交 | 必需检查 | 正式记录 |
 | --- | --- | --- | --- |
-| [#128](https://github.com/Kuddev/pebrel/pull/128) macOS 便携启动 | `c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36749669526) |
+| [#128](https://github.com/Kuddev/pebrel/pull/128) macOS 便携启动 | `c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36749669526) |
 | [#280](https://github.com/Kuddev/pebrel/pull/280) SSH 本地端口转发 | `f5ab21af665c73b40809fc1a82053123397483e6` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750270127) |
-| [#288](https://github.com/Kuddev/pebrel/pull/288) macOS 原生菜单 | `571e0a388558d294439c1788b1200c59aef19e71` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750404192) |
-| [#289](https://github.com/Kuddev/pebrel/pull/289) macOS 前台系统通知 | `96ed7d3b18f6aff0c27baed22c6d9330638ccb7f` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750433708) |
-| [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `81418821a638fbf8675054bf4b908a11a138f653` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468358) |
+| [#288](https://github.com/Kuddev/pebrel/pull/288) macOS 原生菜单 | `571e0a388558d294439c1788b1200c59aef19e71` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750404192) |
+| [#289](https://github.com/Kuddev/pebrel/pull/289) macOS 前台系统通知 | `96ed7d3b18f6aff0c27baed22c6d9330638ccb7f` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750433708) |
+| [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `81418821a638fbf8675054bf4b908a11a138f653` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468358) |
 | [#294](https://github.com/Kuddev/pebrel/pull/294) 自定义更新来源 | `edb18803dc308f56479e1155b481deca49c4ad48` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750507475) |
 
 ## 修复与代码复查
@@ -35,12 +35,13 @@
 
 [#289 权限流程重测 run 36753918280](https://github.com/WilliamWang1721/pebrel/actions/runs/36753918280)绑定最终提交 `96ed7d3`，仍未观察到通知。测试 helper 的 bundle ID 正确；初始授权 0（未决定），申请超时后为 1（拒绝），系统设置授权步骤未成功。注册、派发、前台 policy 安装和激活均未报告错误。这不能证明系统实际显示成功，也不足以确定归因于操作系统。此项仍为验收阻塞。
 
+最后核对：全部必需状态来自规则指定的 GitHub Actions 集成（15368）；六个 PR 的 head 与已验证提交一致，均无冲突，目标 main 仍为 `077595b`。正式 CI 没有未完成或失败的必需项。
+
 ## 剩余合并门槛
 
-1. 所有最终提交的必需 CI 都须完成且通过，历史提交的绿灯不能替代。
-2. main 要求 Kuddev 的一次新 code-owner 批准；作者不能代替，提交更新会撤销旧审批。六个 PR 目前均没有有效新批准，#280 的前次批准已被撤销。
-3. #288 仍是 Draft。当前 GitHub 连接修改上游 PR、发布验证评论和转换 Ready 均返回 403/FORBIDDEN；因此上游 PR 描述仍含较早提交的验证信息。
-4. #289 系统通知实际显示还需完成原生界面诊断和验收。
+1. main 要求 Kuddev 的一次新 code-owner 批准；作者不能代替，提交更新会撤销旧审批。六个 PR 目前均没有有效新批准，#280 的前次批准已被撤销。
+2. #288 仍是 Draft。当前 GitHub 连接修改上游 PR、发布验证评论和转换 Ready 均返回 403/FORBIDDEN；因此上游 PR 描述仍含较早提交的验证信息。
+3. #289 系统通知实际显示还需完成原生界面诊断和验收。
 
 已在本地准备截图诊断方案：只重测 #289 的上述最终提交，使用全新的 macOS GitHub runner 和合成配置，将测试 App 的 PNG 截图及合成 acceptance.json 上传至公开 fork，保留 7 天，不上传原始日志。尚未执行公开截图上传。
 
