@@ -32,7 +32,7 @@ pub(super) const SECTION_SEARCH_TERMS: [&str; 12] = [
     "profiles 配置文件 shell terminal 终端 completion 补全 startup 启动 environment refresh path 环境变量 刷新 ai message notifications toast alerts bell 提醒 通知 弹窗 消息 右下角 ai消息通知 ai 消息通知 ai消息弹窗 ai 消息弹窗 铃声 duration timeout persistent auto-dismiss 时长 秒 常驻 自动关闭",
     "providers provider ai 供应商 模型 api",
     "ssh host 主机 remote 远程 connection 连接",
-    "network 网络 proxy 代理 connectivity 连接",
+    "network 网络 proxy 代理 connectivity 连接 test node 测试 节点 update proxy 更新代理",
     "interaction 交互 copy 复制 paste 粘贴 tab 标签 panel 面板 focus follows mouse 焦点跟随鼠标 自动聚焦",
     "keymap key binding shortcut quick terminal 快速终端 独立窗口 已有窗口 按键映射 快捷键",
     "advanced 高级 session 会话 tray 托盘 restore 恢复 startup autostart login silent 自启动 静默启动 开机 登录",

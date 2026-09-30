@@ -69,6 +69,8 @@ const RESET_KEYS: &[&str] = &[
     "ssh_proxy_mode",
     "ssh_proxy_url",
     "ssh_proxy_no_proxy",
+    "network_test_url",
+    "update_proxy",
     "quick_terminal_hotkey",
     "quick_terminal_mode",
     "quick_terminal_width",
@@ -129,6 +131,17 @@ fn restore_defaults_at(path: &Path) -> io::Result<Option<PathBuf>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reset_restores_network_test_and_update_proxy_defaults() {
+        let text = super::default_settings_text(
+            "network_test_url=https://example.org/\nupdate_proxy=0\nother=keep\n",
+        );
+        let settings = crate::RuntimeSettings::from_raw(&crate::RawSettings::from_text(&text));
+        assert_eq!(settings.network_test_url, "http://example.com/");
+        assert!(settings.update_proxy);
+        assert_eq!(text, "other=keep\n");
+    }
+
     use super::*;
     use crate::{RawSettings, RuntimeSettings};
 

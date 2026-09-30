@@ -6,7 +6,7 @@
 //! 2. 代理环境变量（`ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`，含 `NO_PROXY`）：
 //!    复用 ureq 的 `Proxy::try_from_env()`。
 //!
-//! 应用暂无更新器专用的手动代理设置，也不借用终端或 SSH 的代理偏好。
+//! 更新代理开关独立于终端；开启时优先使用网络页的自定义代理。
 //! 注册表读取只发生在后台请求开始时，不改变其他请求。
 //! 排除规则交给 ureq 的同一实现，重定向到下载 CDN 时也会重新判断。
 
@@ -19,8 +19,28 @@ use ureq::{Proxy, ProxyProtocol};
 pub(crate) mod test_support;
 
 /// 解析更新下载应使用的代理；没有可用代理时返回 `None`（直连）。
-pub(crate) fn resolve(target_url: &str) -> Option<Proxy> {
-    resolve_with_system(raw_system_proxy(target_url), Proxy::try_from_env)
+pub(crate) fn resolve(target_url: &str) -> Result<Option<Proxy>, ureq::Error> {
+    let settings = nebula_settings::RuntimeSettings::load();
+    resolve_with_settings(&settings, || {
+        resolve_with_system(raw_system_proxy(target_url), Proxy::try_from_env)
+    })
+}
+
+fn resolve_with_settings(
+    settings: &nebula_settings::RuntimeSettings,
+    automatic: impl FnOnce() -> Option<Proxy>,
+) -> Result<Option<Proxy>, ureq::Error> {
+    if !settings.update_proxy {
+        return Ok(None);
+    }
+    if settings.ssh_proxy_mode == nebula_settings::ProxyModeName::Custom {
+        return proxy_from_url(
+            &settings.ssh_proxy_url,
+            &crate::ssh_proxy::parse_no_proxy(&settings.ssh_proxy_no_proxy),
+        )
+        .map(Some);
+    }
+    Ok(automatic())
 }
 
 fn resolve_with_system(
@@ -31,9 +51,13 @@ fn resolve_with_system(
 }
 
 /// 每项更新操作拥有独立的有界客户端，复用现有后台执行器，不新增常驻服务。
-pub(crate) fn agent(target_url: &str, timeout: Duration) -> ureq::Agent {
+pub(crate) fn agent(target_url: &str, timeout: Duration) -> Result<ureq::Agent, ureq::Error> {
+    Ok(agent_with_proxy(resolve(target_url)?, timeout))
+}
+
+fn agent_with_proxy(proxy: Option<Proxy>, timeout: Duration) -> ureq::Agent {
     ureq::config::Config::builder()
-        .proxy(resolve(target_url))
+        .proxy(proxy)
         .timeout_global(Some(timeout))
         // 连接限时 30 秒，正文保留调用方的总时限。
         // ureq 3.3 的 recv_response 时限也会延续到正文，不能把大文件截在 30 秒。
@@ -153,6 +177,38 @@ fn target_scheme(target_url: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_switch_controls_custom_and_automatic_proxy_selection() {
+        use nebula_settings::{RawSettings, RuntimeSettings};
+        let mut settings = RuntimeSettings::from_raw(&RawSettings::from_text(""));
+        let automatic = || Proxy::new("http://system.local:8080").ok();
+        assert_eq!(
+            super::resolve_with_settings(&settings, automatic).unwrap().unwrap().host(),
+            "system.local"
+        );
+        settings.ssh_proxy_mode = nebula_settings::ProxyModeName::Custom;
+        settings.ssh_proxy_url = "socks5://custom.local:1080".into();
+        settings.ssh_proxy_no_proxy = "github.com".into();
+        let proxy =
+            super::resolve_with_settings(&settings, || panic!("custom wins")).unwrap().unwrap();
+        assert_eq!(proxy.protocol(), ProxyProtocol::Socks5);
+        assert_eq!(proxy.host(), "custom.local");
+        assert!(proxy.is_no_proxy(&"https://github.com".parse().unwrap()));
+        settings.ssh_proxy_url = "invalid proxy".into();
+        assert!(
+            super::resolve_with_settings(&settings, || panic!("invalid custom must not fall back"))
+                .is_err()
+        );
+        settings.update_proxy = false;
+        assert!(
+            super::resolve_with_settings(&settings, || panic!(
+                "off must not read system or environment"
+            ))
+            .unwrap()
+            .is_none()
+        );
+    }
+
     use super::{parse_windows_proxy_server, proxy_from_url, resolve_with_system, target_scheme};
     use ureq::{Proxy, ProxyProtocol};
 
@@ -333,7 +389,8 @@ mod tests {
     #[test]
     fn download_client_preserves_the_body_budget_and_requires_https() {
         let budget = std::time::Duration::from_secs(15 * 60);
-        let client = super::agent("https://github.com", budget);
+        let client = super::agent_with_proxy(None, budget);
+        assert!(client.config().proxy().is_none());
         let timeouts = client.config().timeouts();
         assert_eq!(timeouts.global, Some(budget));
         // A recv_response deadline also caps a streamed body in ureq 3.3.

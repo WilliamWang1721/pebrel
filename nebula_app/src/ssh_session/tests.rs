@@ -11,6 +11,50 @@ use std::sync::LazyLock;
 use zeroize::Zeroizing;
 
 #[test]
+fn custom_network_test_uses_selected_node_and_reports_http_failures() {
+    use crate::proxy_test::{NetworkTestTarget, ProxyTestFailure, ProxyTestRoute};
+    use crate::update_proxy::test_support::{Server, response};
+
+    for (status, success) in [("204 No Content", true), ("503 Service Unavailable", false)] {
+        let server = Server::start(vec![response(status, "", "")]);
+        let target =
+            NetworkTestTarget::parse(&format!("http://{}/health?probe=1", server.address)).unwrap();
+        let result = super::runtime()
+            .unwrap()
+            .block_on(super::proxy_test_target(&SshProxyConfig::default(), &target));
+        if success {
+            assert_eq!(result.unwrap(), ProxyTestRoute::Direct);
+        } else {
+            assert_eq!(result.unwrap_err(), ProxyTestFailure::HttpStatus { status: 503 });
+        }
+        let requests = server.finish();
+        assert!(requests[0].1.starts_with("GET /health?probe=1 HTTP/1.1"));
+        assert!(requests[0].1.contains(&format!("Host: {}\r\n", server.address)));
+    }
+}
+
+#[test]
+fn custom_network_test_preserves_proxy_handshakes_and_destination() {
+    use crate::proxy_test::NetworkTestTarget;
+    use crate::update_proxy::test_support::{Server, response};
+
+    for scheme in ["socks5", "http"] {
+        let server = Server::start(vec![response("200 OK", "", "")]);
+        let config = SshProxyConfig {
+            mode: ProxyMode::Custom,
+            url: format!("{scheme}://{}", server.address),
+            no_proxy: vec![],
+        };
+        let target = NetworkTestTarget::parse("http://test-node.invalid:8088/status").unwrap();
+        super::runtime().unwrap().block_on(super::proxy_test_target(&config, &target)).unwrap();
+        let requests = server.finish();
+        assert!(requests[0].0.contains("test-node.invalid:8088"));
+        assert!(requests[0].1.starts_with("GET /status HTTP/1.1"));
+        assert!(requests[0].1.contains("Host: test-node.invalid:8088\r\n"));
+    }
+}
+
+#[test]
 fn parses_saved_destinations() {
     let plain = SshDestination::parse("root@example.com").unwrap();
     assert_eq!((plain.user.as_str(), plain.host.as_str(), plain.port), ("root", "example.com", 22));

@@ -82,6 +82,15 @@ impl UiLanguage {
 
     fn proxy_test_failure(self, failure: &ProxyTestFailure) -> String {
         match failure {
+            ProxyTestFailure::SaveSettings(error) => {
+                self.format(crate::i18n::Message::SettingsSaveFailed, &[("error", error)])
+            },
+            ProxyTestFailure::InvalidTarget => {
+                self.text(crate::i18n::Message::SettingsNetworkFailureInvalidTarget).into()
+            },
+            ProxyTestFailure::Tls(error) => {
+                self.format(crate::i18n::Message::SettingsNetworkFailureTls, &[("error", error)])
+            },
             ProxyTestFailure::LoadSettings(error) => {
                 self.tr_args("settings.network.failure.load_settings", &[("error", error)])
             },

@@ -229,7 +229,8 @@ fn download_to_partial(
         let agent = crate::update_check::test_source::agent(Duration::from_secs(15 * 60));
         return download_with_job(asset, partial_path, language, &agent, job);
     }
-    let agent = crate::update_proxy::agent(&asset.download_url, Duration::from_secs(15 * 60));
+    let agent = crate::update_proxy::agent(&asset.download_url, Duration::from_secs(15 * 60))
+        .map_err(|error| error.to_string())?;
     download_with_job(asset, partial_path, language, &agent, job)
 }
 
