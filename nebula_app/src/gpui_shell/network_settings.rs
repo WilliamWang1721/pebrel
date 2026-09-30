@@ -205,16 +205,21 @@ impl SettingsPane {
         let custom = shows_manual_proxy_address(self.runtime.ssh_proxy_mode);
         let language = crate::gpui_shell::config::ui_language(cx);
         self.group(language.tr("settings.network.title"), cx)
-            .child(self.row(
-                language.text(crate::i18n::Message::SettingsNetworkTargetLabel),
-                language.text(crate::i18n::Message::SettingsNetworkTargetDescription),
-                div().id("network-test-url").flex_1().min_w_0().max_w(px(360.0)).child(
-                    Input::new(&self.network_test_url_input).aria_label(
-                        language.text(crate::i18n::Message::SettingsNetworkTargetLabel),
-                    ),
+            .child(
+                self.row(
+                    language.text(crate::i18n::Message::SettingsNetworkTargetLabel),
+                    language.text(crate::i18n::Message::SettingsNetworkTargetDescription),
+                    div()
+                        .debug_selector(|| "network-test-url".to_owned())
+                        .flex_1()
+                        .min_w_0()
+                        .max_w(px(360.0))
+                        .child(Input::new(&self.network_test_url_input).aria_label(
+                            language.text(crate::i18n::Message::SettingsNetworkTargetLabel),
+                        )),
+                    cx,
                 ),
-                cx,
-            ))
+            )
             .child(self.proxy_test_banner(cx))
             .child(div().h(px(PROXY_TEST_GAP)).w_full().flex_shrink_0())
             .child(self.proxy_mode_row(cx))
