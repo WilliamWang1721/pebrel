@@ -1,17 +1,17 @@
 # Pebrel 六个 PR 的合并准备报告
 
-状态：修复已推送，最终 CI 仍在完成，尚未达到 100% Ready to Merge。记录时间：2026-09-30 16:17 UTC。
+状态：修复已推送，最终 CI 仍在完成，尚未达到 100% Ready to Merge。记录时间：2026-09-30 17:25 UTC。
 
-目标 main：`5ff2f3eea54b9c66e416149e17e823b8d72b1dee`。六个 PR 均已同步到该版本。没有合并 PR，也没有 force push。
+目标 main：`077595b4a4f1bda0be57e52324343785f69c5a3e`。六个 PR 均已同步到该版本。没有合并 PR，也没有 force push。
 
 | PR | 最终提交 | 必需检查 | 正式检查记录 |
 | --- | --- | --- | --- |
-| [#128](https://github.com/Kuddev/pebrel/pull/128) macOS 便携启动 | `cf55c0d16db6904b9eda3b05fbcc7afa6531cb0b` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738649120) |
-| [#280](https://github.com/Kuddev/pebrel/pull/280) SSH 本地端口转发 | `457d4a95e2247ade8f286742c58b3e7860121ebc` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738680063) |
-| [#288](https://github.com/Kuddev/pebrel/pull/288) macOS 原生菜单 | `fc2529b125f3c890a54d997503e87c5da73ad101` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738717424) |
-| [#289](https://github.com/Kuddev/pebrel/pull/289) macOS 前台系统通知 | `03d992b96dc3239fee42b2a9ef059135c8f1bfd6` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738803423) |
-| [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `24ea816055901878c6f8a6238672284e5870d338` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36741892267) |
-| [#294](https://github.com/Kuddev/pebrel/pull/294) 自定义更新来源 | `45e8ce4bb94c8ef060f561f018d3ba8e3619da9e` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738871406) |
+| [#128](https://github.com/Kuddev/pebrel/pull/128) | `c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36749669526) |
+| [#280](https://github.com/Kuddev/pebrel/pull/280) | `f5ab21af665c73b40809fc1a82053123397483e6` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750270127) |
+| [#288](https://github.com/Kuddev/pebrel/pull/288) | `571e0a388558d294439c1788b1200c59aef19e71` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750404192) |
+| [#289](https://github.com/Kuddev/pebrel/pull/289) | `96ed7d3b18f6aff0c27baed22c6d9330638ccb7f` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750433708) |
+| [#291](https://github.com/Kuddev/pebrel/pull/291) | `81418821a638fbf8675054bf4b908a11a138f653` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468358) |
+| [#294](https://github.com/Kuddev/pebrel/pull/294) | `edb18803dc308f56479e1155b481deca49c4ad48` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750507475) |
 
 ## 修复与复查
 
@@ -46,3 +46,9 @@
 自动审批曾拒绝重新打包原生日志和截图，理由是它们可能包含 runner 路径、命令及环境信息。已请求用户明确授权，尚未收到答复。被拒绝的产物没有重新导出；后续仅导出合成检查名称、布尔值和数值状态。
 
 本轮由 Codex（GPT-6）协助完成；具体模型 variant 与 reasoning effort 未在当前运行环境提供。
+
+## 2.1.0 主线同步
+
+六个 PR 均以普通合并提交同步到 `077595b`。正确性复查确认包版本为 2.1.0、主线翻译不丢失且无重复键、#128 同时保留主线依赖与原生启动修复、#294 同时保留新主题测试与更新来源回归。最小性复查确认功能差异的文件范围不变，没有修改合并规则或添加产品内验收工作流。格式、空白和架构检查通过。#291 等待期间新增的补全、加密备份、Android 配对指南已核对并保留。
+
+最终 2.1.0 提交的 macOS 原生验收：[run 36750717366](https://github.com/WilliamWang1721/pebrel/actions/runs/36750717366)，当前排队。便携启动、菜单和通知分别绑定此表中的确切提交。通知授权探针补齐 Cocoa 启动生命周期、签名标识和当前版本元数据，产物仍仅包含合成检查名、布尔值与数值；不会导出此前被拒绝的原始日志或截图。历史提交的原生成功记录不代替本轮结果。
