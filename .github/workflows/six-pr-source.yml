@@ -1,0 +1,55 @@
+# Public-source acquisition required by the user's pebrel-development skill.
+# Both Kuddev/pebrel and WilliamWang1721/pebrel were verified public.
+name: Six PR public source snapshot
+on:
+  push:
+    branches: [codex/ready-six-source-20260930]
+    paths: [.github/workflows/six-pr-source.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+      - name: Fetch six public PR heads
+        working-directory: source
+        run: |
+          git fetch origin pull/128/head:refs/heads/pr-128 pull/280/head:refs/heads/pr-280 pull/288/head:refs/heads/pr-288 pull/289/head:refs/heads/pr-289 pull/291/head:refs/heads/pr-291 pull/294/head:refs/heads/pr-294
+          git for-each-ref --format='%(refname) %(objectname)' > ../source-refs.txt
+          git status --porcelain
+          git gc
+      - name: Pack complete public source with history
+        run: |
+          zip -qr source.zip source source-refs.txt
+          split -b 20M -d source.zip source-part-
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-part-00
+          path: source-part-00
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-part-01
+          path: source-part-01
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-part-02
+          path: source-part-02
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-part-03
+          path: source-part-03
+          if-no-files-found: ignore
+          retention-days: 3
