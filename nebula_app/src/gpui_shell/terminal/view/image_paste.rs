@@ -77,16 +77,25 @@ impl TerminalView {
         let Some(payload) = cx.read_from_clipboard().and_then(clipboard_payload) else { return };
         match payload {
             ClipboardPayload::Text(text) => {
-                let lines = paste_line_count(&text);
-                if nebula_settings::RuntimeSettings::load().multiline_paste_confirm
-                    && paste_needs_confirmation(&text, self.term_mode())
-                {
-                    self.confirm_paste(text, lines, window, cx);
-                } else {
-                    self.paste_now(&text, cx);
-                }
+                self.request_paste(text, window, cx);
             },
             ClipboardPayload::Image(bytes) => self.paste_image(bytes, window, cx),
+        }
+    }
+
+    pub(super) fn request_paste(
+        &mut self,
+        text: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if nebula_settings::RuntimeSettings::load().multiline_paste_confirm
+            && paste_needs_confirmation(&text, self.term_mode())
+        {
+            let lines = paste_line_count(&text);
+            self.confirm_paste(text, lines, window, cx);
+        } else {
+            self.paste_now(&text, cx);
         }
     }
 

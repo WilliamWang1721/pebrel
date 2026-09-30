@@ -740,6 +740,7 @@ impl SettingsPane {
         }
         match key {
             "follow_system_theme" => flag!(follow_system_theme),
+            "block_terminal" => flag!(block_terminal),
             "copy_on_select" => flag!(copy_on_select),
             "focus_follows_mouse" => Some((cur.focus_follows_mouse.is_some(), String::new())),
             "dim_inactive_panes" => flag!(dim_inactive_panes),

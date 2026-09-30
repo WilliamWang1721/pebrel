@@ -215,16 +215,22 @@ impl StreamProcessor {
             self.advance(terminal, &bytes[advanced..offset]);
             advanced = offset;
             match event {
-                OscEvent::Cwd(cwd) => event_proxy.send_event(Event::CwdReport(cwd)),
+                OscEvent::Cwd(cwd) => {
+                    terminal.nebula_command_cwd(&cwd);
+                    event_proxy.send_event(Event::CwdReport(cwd));
+                },
                 OscEvent::CommandStart => {
-                    terminal.nebula_end_prompt();
+                    terminal.nebula_command_start();
                     event_proxy.send_event(Event::CommandStart);
                 },
                 OscEvent::CommandDone { exit_code } => {
-                    terminal.nebula_end_prompt();
+                    terminal.nebula_command_done(exit_code);
                     event_proxy.send_event(Event::CommandDone { exit_code })
                 },
                 OscEvent::UserVar { name, value } => {
+                    if name == "pebrel_command" {
+                        terminal.nebula_command_line_report(&value);
+                    }
                     event_proxy.send_event(Event::UserVar { name, value })
                 },
                 OscEvent::Notify(text) => event_proxy.send_event(Event::Notify(text)),

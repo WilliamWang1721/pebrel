@@ -477,6 +477,7 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.hover_command_at(event.position, cx);
         // Retain the pressed link until release; dragging must not retarget it
         // or leak part of the consumed gesture to the application.
         if self.pending_link_open {
@@ -614,8 +615,13 @@ impl TerminalView {
             && self.link_hover.as_ref().is_some_and(|hover| hover.hint.bounds().contains(&point));
         if open_link {
             self.try_open_hovered_link(window, cx);
-        } else if self.copy_on_select {
-            self.copy_selection(false, window, cx);
+        } else if self.selection_is_empty() && !event.modifiers.shift {
+            self.select_command_at(point, cx);
+        } else {
+            self.blocks.selected = None;
+            if self.copy_on_select {
+                self.copy_selection(false, window, cx);
+            }
         }
         cx.notify();
     }

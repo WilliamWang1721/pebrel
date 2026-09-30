@@ -95,6 +95,7 @@ impl TerminalElement {
         usize,
         i64,
         bool,
+        Vec<super::command_blocks::VisibleBlock>,
     )> {
         let view = self.view.read(cx);
         let session = view.session.as_ref()?;
@@ -131,6 +132,7 @@ impl TerminalElement {
             scrollback_floor,
             viewport_top_abs,
             term.mode().contains(TermMode::ALT_SCREEN),
+            super::command_blocks::visible(&term, rows),
         ))
     }
 
@@ -317,10 +319,21 @@ impl Element for TerminalElement {
             scrollback_floor,
             viewport_top_abs,
             alternate_screen,
+            blocks,
         )) = self.snapshot(layout.rows, layout.cols, cx)
         else {
             return;
         };
+        super::command_blocks::paint(
+            &blocks,
+            self.view.read(cx).blocks.selected,
+            self.view.read(cx).blocks.hovered,
+            bounds.origin,
+            layout.cell_width * layout.cols as f32,
+            layout.line_height,
+            window,
+            cx,
+        );
         let suggest_anchor =
             snap.cursor.as_ref().map(|cursor| (cursor.row as usize, cursor.col as usize));
         self.view.update(cx, |view, cx| {

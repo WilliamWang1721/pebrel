@@ -163,8 +163,11 @@ pub(super) fn local_options(
 pub fn spawn(
     window_size: WindowSize,
     term_config: Config,
-    options: tty::Options,
+    mut options: tty::Options,
 ) -> std::io::Result<SpawnedSession> {
+    options
+        .env
+        .insert("PEBREL_BLOCK_TERMINAL".into(), (term_config.command_regions as u8).to_string());
     let (tx, rx) = super::event_mailbox::channel();
     let (stage_tx, stage_rx) = unbounded();
     let proxy = EventProxy { events: tx, stages: stage_tx, remote_reader: Default::default() };
@@ -204,7 +207,8 @@ pub fn spawn_ssh(
     window_size: WindowSize,
     term_config: Config,
 ) -> std::io::Result<SpawnedSession> {
-    let term_config = crate::ssh_session::terminal_config(term_config);
+    let mut term_config = crate::ssh_session::terminal_config(term_config);
+    term_config.command_regions = false;
     let (tx, rx) = super::event_mailbox::channel();
     let (stage_tx, stage_rx) = unbounded();
     let proxy = EventProxy { events: tx, stages: stage_tx, remote_reader: Default::default() };

@@ -19,6 +19,8 @@ mod agent_hooks;
 pub use agent_hooks::AgentHook;
 mod app_icon;
 pub use app_icon::{AppIconName, AppIconPalette};
+#[cfg(test)]
+mod block_terminal_tests;
 mod cursor_motion;
 mod custom_theme;
 pub use cursor_motion::CursorMotion;
@@ -1036,6 +1038,8 @@ pub struct RuntimeSettings {
     pub cursor_shape: Option<CursorShapeName>,
     pub cursor_blink: Option<bool>,
     pub cursor_motion: CursorMotion,
+    /// Experimental command blocks; disabled by default.
+    pub block_terminal: bool,
     pub copy_on_select: bool,
     /// Maximum retained history for new terminals, without altering open sessions.
     pub scrollback_lines: usize,
@@ -1217,6 +1221,7 @@ impl RuntimeSettings {
                 .value("cursor_motion")
                 .and_then(CursorMotion::from_settings)
                 .unwrap_or_default(),
+            block_terminal: raw.bool_on("block_terminal").unwrap_or(false),
             copy_on_select: raw.bool_on("copy_on_select").unwrap_or(false),
             scrollback_lines: scrolling::scrollback_lines(raw),
             scroll_speed: normalize_scroll_speed(

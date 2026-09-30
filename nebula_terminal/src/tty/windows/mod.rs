@@ -506,7 +506,10 @@ function global:prompt {
     # 使用主题的 ANSI-16 索引，历史提示符仍随主题换色；不占用应用所需的
     # xterm 扩展色槽。路径和时间用默认前景/背景，避免浅色主题的 ANSI 灰阶低对比。
 
-    if ($userPrompt) {
+    if ($env:PEBREL_BLOCK_TERMINAL -eq '1') {
+        [Console]::Write("$e]7;$(([Uri]::new($cwd)).AbsoluteUri)$([char]7)")
+        $output = "$leadingNewline$e]133;A$([char]7)$e]2;NEBULA|$cwd|$branch$([char]7)$loc`n$NebPromptArrow "
+    } elseif ($userPrompt) {
         # 视觉全部来自用户提示符；Nebula 只补协议：133;A 标出提示符起点，标题
         # 里带上宿主需要的绝对 cwd 与分支。换行留给用户提示符自己决定。
         $output = "$e]133;A$([char]7)$e]2;NEBULA|$cwd|$branch$([char]7)$userPrompt"
@@ -536,6 +539,7 @@ function global:prompt {
         $output = "$leadingNewline$e]133;A$([char]7)$e]2;NEBULA|$cwd|$branch$([char]7)$out`n`n$e[35m$NebPromptArrow $reset"
     }
 
+    if ($env:PEBREL_BLOCK_TERMINAL -eq '1') { $output += "$e]133;B$([char]7)" }
     try { Set-PSReadLineOption -ExtraPromptLineCount (($output | Measure-Object -Line).Lines - 1) } catch {}
 
     # prompt 返回值先输出，状态恢复必须放到整个函数的最后；否则任意一次
@@ -941,6 +945,7 @@ __nebula_precmd() {
     # OSC 133;D;<code> 要尽早发出：用户的旧 precmd 即使较慢，也不应拖延终端
     # 对“上一条命令已经结束”的判断。退出码供助手的错误恢复判定。
     printf '\033]133;D;%s\007' "$cmd_status"
+    if [[ ${PEBREL_BLOCK_TERMINAL:-0} == 1 ]]; then printf '\n'; fi
 
     # 旧 PROMPT_COMMAND 的非视觉副作用（历史、环境管理器、目录 hook）仍然执行。
     local ps1_before_hooks="${PS1-}"
@@ -974,6 +979,11 @@ __nebula_precmd() {
         else
             PS1='\[\033[90m\]\w \[\033[35m\]'"$prompt_mark"' \[\033[0m\]'
         fi
+    fi
+
+    if [[ ${PEBREL_BLOCK_TERMINAL:-0} == 1 ]]; then
+        PS1='\w\n> \[\033]133;B\007\]'
+        PS2=''
     fi
 
     # PROMPT_COMMAND 自身的最终状态会成为交互式 shell 下一次看到的 $?。

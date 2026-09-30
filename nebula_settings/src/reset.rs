@@ -21,6 +21,7 @@ const RESET_KEYS: &[&str] = &[
     "cursor_shape",
     "cursor_blink",
     "cursor_motion",
+    "block_terminal",
     "copy_on_select",
     "focus_follows_mouse",
     "dim_inactive_panes",
@@ -131,6 +132,15 @@ fn restore_defaults_at(path: &Path) -> io::Result<Option<PathBuf>> {
 mod tests {
     use super::*;
     use crate::{RawSettings, RuntimeSettings};
+
+    #[test]
+    fn reset_disables_command_blocks_without_removing_unknown_keys() {
+        let text = default_settings_text("block_terminal=1\nprivate=keep\n");
+        assert!(
+            !crate::RuntimeSettings::from_raw(&crate::RawSettings::from_text(&text)).block_terminal
+        );
+        assert!(text.contains("private=keep"));
+    }
 
     #[test]
     fn reset_preserves_explicit_hook_authorization_and_opt_out() {
