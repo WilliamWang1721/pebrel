@@ -180,7 +180,25 @@ try:
         wait_for(lambda: 'system toast source' in (output / 'notification.log').read_text(), 'foreground OSC 9 reaches system delivery', 35)
         shot('01-foreground-notification')
         def center_labels():
-            return apple('tell application "System Events"\nset labels to {}\nrepeat with e in (entire contents of application process "NotificationCenter")\ntry\nset end of labels to value of e as text\nend try\nend repeat\nreturn labels as text\nend tell')
+            return apple('''tell application "System Events"
+set labels to {}
+repeat with processName in {"NotificationCenter", "ControlCenter"}
+if exists application process processName then
+repeat with e in (entire contents of application process processName)
+try
+set end of labels to value of e as text
+end try
+try
+set end of labels to name of e as text
+end try
+try
+set end of labels to description of e as text
+end try
+end repeat
+end if
+end repeat
+return labels as text
+end tell''')
         labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center exposes notice', 30)
         (output / 'notification-center.txt').write_text(labels)
         assert notice in labels, 'Notification Center did not expose the delivered banner'
@@ -202,6 +220,7 @@ finally:
         diagnostics['gpui_missing_application_ivar'] = 'ivar' in portable_log and 'panicked at' in portable_log
     if scenario == 'notification' and (output / 'notification.log').exists():
         notification_log = (output / 'notification.log').read_text()
+        diagnostics['foreground_policy_install_failed'] = 'Could not enable foreground' in notification_log
         diagnostics['native_dispatch_failed'] = 'toast failed' in notification_log
         diagnostics['native_bundle_registration_missing'] = 'require a registered' in notification_log
         diagnostics['native_activation_failed'] = 'activation listener failed' in notification_log
