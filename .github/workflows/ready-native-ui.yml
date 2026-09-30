@@ -18,9 +18,6 @@ jobs:
           - pr: 128
             scenario: portable
             sha: 99898d1eae26a66f655fb1c1455d13533aa3dd02
-          - pr: 288
-            scenario: menu
-            sha: 9e07c9f2b5da3562c1787e2214f011fdaf917cfb
           - pr: 289
             scenario: notification
             sha: 1b9e69753bc10c663d2ab6e86ee2e3f551567d17
