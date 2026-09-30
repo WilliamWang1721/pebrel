@@ -85,7 +85,7 @@ fn agents_content_is_centered_and_paths_leave_room_for_hook_status(cx: &mut Test
         let status = window.debug_bounds("agent-hook-status-0").unwrap();
         let center = px((width + SETTINGS_NAV_WIDTH) / 2.0);
         assert!((f32::from(row.center().x - center)).abs() <= 2.0);
-        assert!(row.size.width <= px(720.0));
+        assert!((row.size.width - px(width - SETTINGS_NAV_WIDTH - 42.0)).abs() <= px(2.0));
         assert!(path.size.width > px(0.0));
         assert!(path.right() <= status.left());
         assert!(status.right() + px(40.0) <= row.right());

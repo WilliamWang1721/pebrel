@@ -508,3 +508,61 @@ mod shell_row_geometry {
         );
     }
 }
+
+#[cfg(feature = "gpui-test-support")]
+#[gpui::test]
+fn settings_sections_share_appearance_width_and_insets(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.set_reduce_motion(true);
+        cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
+    });
+    let mut pane = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| SettingsPane::new(window, cx));
+        view.update(cx, |pane, _| {
+            pane.active_section = 1;
+            pane.backup_remote = crate::backup_remote::BackupRemoteConfig::default();
+        });
+        pane = Some(view.clone());
+        gpui_component::Root::new(view, window, cx)
+    });
+    let pane = pane.unwrap();
+    for language in [crate::display::UiLanguage::ZhCn, crate::display::UiLanguage::DeDe] {
+        cx.update(|_, cx| {
+            cx.global_mut::<crate::gpui_shell::config::Settings>().ui_language = language;
+        });
+        for width in [1040.0, 1440.0] {
+            cx.simulate_resize(gpui::size(px(width), px(1100.0)));
+            let mut reference = None;
+            for section in 1..SECTION_IDS.len() {
+                cx.update(|_, cx| {
+                    pane.update(cx, |pane, cx| {
+                        pane.active_section = section;
+                        cx.notify();
+                    });
+                });
+                cx.run_until_parked();
+                cx.update(|window, cx| {
+                    window.refresh();
+                    window.draw(cx).clear(cx);
+                });
+                let bounds = cx.debug_bounds("settings-section").expect("rendered settings page");
+                let expected = *reference.get_or_insert(bounds);
+                for (actual, target) in [
+                    (bounds.left(), expected.left()),
+                    (bounds.right(), expected.right()),
+                    (bounds.top(), expected.top()),
+                ] {
+                    assert!((actual - target).abs() <= px(1.0), "section {section} at {width}");
+                }
+                if section == MOBILE_SECTION {
+                    let mobile = cx.debug_bounds("mobile-settings").unwrap();
+                    assert!((mobile.left() - expected.left()).abs() <= px(1.0));
+                    assert!((mobile.right() - expected.right()).abs() <= px(1.0));
+                    assert!((mobile.top() - expected.top()).abs() <= px(1.0));
+                }
+            }
+        }
+    }
+}

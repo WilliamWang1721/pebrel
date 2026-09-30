@@ -130,18 +130,12 @@ impl SettingsPane {
         }
         v_flex()
             .w_full()
-            .max_w(px(720.0))
             .gap_4()
             .child(
                 h_flex()
                     .justify_between()
                     .gap_3()
-                    .child(
-                        div()
-                            .text_size(px(20.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(language.text(Message::SettingsAgentsTitle)),
-                    )
+                    .child(self.group_heading(language.text(Message::SettingsAgentsTitle), cx))
                     .child(
                         Button::new("agents-refresh")
                             .ghost()

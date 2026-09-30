@@ -79,29 +79,19 @@ impl SettingsPane {
         self.mobile_initialize(window, cx);
         let language = crate::gpui_shell::config::ui_language(cx);
         let phase = self.mobile.phase();
-        // 原型的 812 包含两侧 56px 留白；窄窗收紧页边，不缩小二维码或按钮。
+        // 窄窗只调整配对卡布局，不缩小二维码或按钮。
         let narrow = f32::from(window.viewport_size().width) < 1000.0;
         let mut page = v_flex()
             .id("mobile-settings")
             .debug_selector(|| "mobile-settings".into())
             .w_full()
-            .max_w(px(812.0))
-            .px(px(if narrow { 24.0 } else { 56.0 }))
-            .pt(px(44.0))
-            .pb(px(140.0))
             .text_size(px(14.0))
             .line_height(px(21.0))
             .child(
                 v_flex()
                     .w_full()
                     .gap(px(6.0))
-                    .child(
-                        div()
-                            .text_size(px(22.0))
-                            .line_height(px(30.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(language.text(Message::MobileTitle)),
-                    )
+                    .child(self.group_heading(language.text(Message::MobileTitle), cx))
                     .child(description(language.text(Message::MobileSubtitle), cx)),
             );
         if let Some(failure) = self.mobile.failure {

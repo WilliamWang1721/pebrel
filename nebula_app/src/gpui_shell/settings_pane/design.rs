@@ -66,7 +66,6 @@ impl SettingsPane {
     /// 一组设置的开头：标题出线。轨道不在这里画——它由组内每一行自己接续，
     /// 这样才能做到"同一条线，某几段是亮的"。
     pub(crate) fn group(&self, title: &'static str, cx: &Context<Self>) -> gpui::Div {
-        let base_px = self.font_size_px(cx);
         // 组间距归 section 容器的 `gap`（HTML 原型里就是 `.a-main` 自己
         // `gap:24`），组不自带 `pt`：自带的话，首个元素不是分组的页会拿不到
         // 那段留白而直接贴住页头线，而首组又会拿到"正文上留白 + 组上留白"的
@@ -77,14 +76,15 @@ impl SettingsPane {
         // 窄窗口反而齐，因为那时被可用宽度压住了）。
         //
         // 不设宽度则走 flex 交叉轴 stretch：布局算法直接拉伸，不依赖父宽解析。
-        v_flex().w_full().child(
-            div()
-                .pb(px(10.0))
-                .text_size(px(base_px * DESC_SCALE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(cx.theme().muted_foreground)
-                .child(title),
-        )
+        v_flex().w_full().child(self.group_heading(title, cx).pb(px(10.0)))
+    }
+
+    pub(crate) fn group_heading(&self, title: &'static str, cx: &Context<Self>) -> gpui::Div {
+        div()
+            .text_size(px(self.font_size_px(cx) * DESC_SCALE))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(cx.theme().muted_foreground)
+            .child(title)
     }
 
     /// 组与组之间的间隔。

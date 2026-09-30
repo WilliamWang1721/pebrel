@@ -1325,6 +1325,7 @@ impl SettingsPane {
             MOBILE_SECTION => self.section_mobile(window, cx),
             _ => self.section_backup(window, cx),
         }
+        .debug_selector(|| "settings-section".into())
         .into_any_element()
     }
 
@@ -1464,7 +1465,6 @@ impl Render for SettingsPane {
         let backup_drawer = self.backup_drawer(window, cx);
         let mobile_relay_modal = self.mobile_relay_modal(cx);
         let application_page = self.active_section == 0;
-        let mobile_page = self.active_section == MOBILE_SECTION;
 
         div()
             .size_full()
@@ -1531,7 +1531,6 @@ impl Render for SettingsPane {
                             .pt(px(20.0))
                             .pb(px(22.0))
                             .when(!application_page, |content| content.pt(px(28.0)).pb(px(30.0)))
-                            .when(mobile_page, |content| content.p_0())
                             // 注意这层包装 `v_flex` 的 `w_full` 不能删（2026-08-23
                             // 又栽了一次）：`overflow_y_scrollbar` 把内容层清成
                             // `Display::Block`，而 flex 容器在 block 父里
@@ -1557,10 +1556,6 @@ impl Render for SettingsPane {
                             // 也不贴右。补一层竖向 flex 后分组走交叉轴 stretch
                             // 取宽，症状消失。
                             //
-                            // 行宽上限：控件贴的是这个上限的右边，不是窗口的右
-                            // 边。没有它时标签在最左、值在最右，1080px 宽的窗口
-                            // 里眼睛要横跨一整屏才能把"这一项"和"它现在是什么"
-                            // 配上，扫到第三行就串行。窗口再宽只是两侧留白变多。
                             .child(
                                 div()
                                     .w_full()
@@ -1569,9 +1564,6 @@ impl Render for SettingsPane {
                                     .child(
                                         v_flex()
                                             .w_full()
-                                            .when(matches!(self.active_section, 4 | 9 | 10 | MOBILE_SECTION), |content| {
-                                                content.items_center()
-                                            })
                                             .when(application_page, |content| content.max_w(px(960.0)))
                                             .child(content),
                                     ),

@@ -61,19 +61,13 @@ impl SettingsPane {
         let off = self.backup_remote.protocol == BackupProtocol::Off;
         v_flex()
             .w_full()
-            .max_w(px(700.0))
-            .gap_6()
+            .gap(px(GROUP_GAP))
             .text_size(px(14.0))
             .child(
                 v_flex()
                     .gap_2()
                     .mb_1()
-                    .child(
-                        div()
-                            .text_size(px(22.0))
-                            .font_semibold()
-                            .child(l.text(Message::BackupFlowTitle)),
-                    )
+                    .child(self.group_heading(l.text(Message::BackupFlowTitle), cx))
                     .child(caption(l.text(Message::BackupFlowIntro), cx)),
             )
             .when(self.backup_ui.undo.is_some(), |d| {

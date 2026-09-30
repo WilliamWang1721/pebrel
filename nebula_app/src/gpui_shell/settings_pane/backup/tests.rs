@@ -40,7 +40,7 @@ fn backup_wizard_requires_connection_and_matching_passwords(cx: &mut gpui::TestA
         draw(cx);
         let wizard = cx.debug_bounds("backup-wizard").unwrap();
         assert!(wizard.right() <= px(width));
-        assert!(wizard.size.width <= px(700.0));
+        assert!((wizard.size.width - px(width - SETTINGS_NAV_WIDTH - 40.0)).abs() <= px(2.0));
         let center = px((width + SETTINGS_NAV_WIDTH) / 2.0);
         assert!(f32::from(wizard.center().x - center).abs() <= 2.0);
         assert!(cx.debug_bounds("backup-content-0").is_none());
