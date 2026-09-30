@@ -62,42 +62,85 @@ def bundle(folder):
     return executable
 
 
-def notification_authorization_status():
-    app = output / 'authorization-probe/Pebrel.app'
-    executable = app / 'Contents/MacOS/policy-probe'
-    executable.parent.mkdir(parents=True)
+def notification_authorization_status(request=False):
+    # Use the actual synthetic bundle, avoiding a second registration with the same ID.
+    app = output / 'notification/Pebrel.app'
+    executable = app / 'Contents/MacOS/permission-probe'
     source_file = output / 'authorization-probe.m'
     source_file.write_text('''#import <Cocoa/Cocoa.h>
 #import <UserNotifications/UserNotifications.h>
 #include <stdio.h>
-int main(void) {
+void print_status(void) {
+    [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+        printf("%ld\\n", (long)settings.authorizationStatus);
+        fflush(stdout);
+        exit(0);
+    }];
+}
+int main(int argc, const char **argv) {
     @autoreleasepool {
         [NSApplication sharedApplication];
-        [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
-            printf("%ld\\n", (long)settings.authorizationStatus);
-            fflush(stdout);
-            exit(0);
-        }];
+        if (argc > 1) {
+            [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound completionHandler:^(BOOL granted, NSError *error) { print_status(); }];
+        } else { print_status(); }
         [[NSRunLoop currentRunLoop] run];
     }
     return 1;
 }
 ''')
     run(['clang', str(source_file), '-o', str(executable), '-framework', 'Cocoa', '-framework', 'UserNotifications'])
-    plist = plistlib.loads((Path(source) / 'packaging/macos/Info.plist').read_bytes())
-    plist.update(CFBundleExecutable='policy-probe', CFBundleName='Pebrel', CFBundleIdentifier='io.github.kuddev.pebrel')
-    (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(plist))
     run(['codesign', '--force', '--deep', '--sign', '-', str(app)])
-    run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(app)])
-    state_file = output / 'authorization-state.txt'
-    run(['open', '-n', '-W', '--stdout', str(state_file), '--stderr', str(output / 'authorization-probe.err.log'), str(app)])
-    return int(state_file.read_text().strip())
+    if not request:
+        return int(run([str(executable)]).strip())
+    proc = subprocess.Popen([str(executable), 'request'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 25
+        while proc.poll() is None and time.monotonic() < deadline:
+            clicked = apple('''tell application "System Events"
+repeat with procRef in application processes
+try
+repeat with win in windows of procRef
+if exists button "Allow" of win then
+set labels to {}
+repeat with e in entire contents of win
+try
+set end of labels to value of e as text
+end try
+try
+set end of labels to name of e as text
+end try
+end repeat
+if labels as text contains "Pebrel" then
+click button "Allow" of win
+return "allowed synthetic Pebrel notification permission"
+end if
+end if
+end repeat
+end try
+end repeat
+return "waiting"
+end tell''').strip()
+            if clicked == 'allowed synthetic Pebrel notification permission':
+                permission_diagnostics['synthetic_permission_prompt_accepted'] = True
+            time.sleep(.5)
+        stdout, _ = proc.communicate(timeout=5)
+        return int(stdout.strip())
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 def enable_test_notification_permission(executable):
     # Changes only the synthetic Pebrel bundle on this disposable Actions runner.
     permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
     run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(executable.parents[2])])
+    if permission_diagnostics['initial_notification_authorization_status'] == 0:
+        try:
+            permission_diagnostics['requested_notification_authorization_status'] = notification_authorization_status(request=True)
+        except (AssertionError, subprocess.SubprocessError, ValueError, OSError):
+            permission_diagnostics['synthetic_permission_request_failed'] = True
+        return
     if permission_diagnostics['initial_notification_authorization_status'] != 1:
         return
     run(['open', 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=io.github.kuddev.pebrel'])
