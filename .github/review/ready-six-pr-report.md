@@ -1,6 +1,6 @@
 # Pebrel 六个 PR 的合并准备报告
 
-状态：修复已推送，最终 CI 仍在完成，尚未达到 100% Ready to Merge。记录时间：2026-09-30 16:06 UTC。
+状态：修复已推送，最终 CI 仍在完成，尚未达到 100% Ready to Merge。记录时间：2026-09-30 16:17 UTC。
 
 目标 main：`5ff2f3eea54b9c66e416149e17e823b8d72b1dee`。六个 PR 均已同步到该版本。没有合并 PR，也没有 force push。
 
@@ -10,7 +10,7 @@
 | [#280](https://github.com/Kuddev/pebrel/pull/280) SSH 本地端口转发 | `457d4a95e2247ade8f286742c58b3e7860121ebc` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738680063) |
 | [#288](https://github.com/Kuddev/pebrel/pull/288) macOS 原生菜单 | `fc2529b125f3c890a54d997503e87c5da73ad101` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738717424) |
 | [#289](https://github.com/Kuddev/pebrel/pull/289) macOS 前台系统通知 | `03d992b96dc3239fee42b2a9ef059135c8f1bfd6` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738803423) |
-| [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `1f42b3f57341fff6874669fce04f81de802ee6b5` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738836135) |
+| [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `24ea816055901878c6f8a6238672284e5870d338` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36741892267) |
 | [#294](https://github.com/Kuddev/pebrel/pull/294) 自定义更新来源 | `45e8ce4bb94c8ef060f561f018d3ba8e3619da9e` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36738871406) |
 
 ## 修复与复查
@@ -19,7 +19,7 @@
 - #280：解决 SSH 模块合并冲突，保留当前 transcript 模块，核对 listener 重试、真实拒绝协议、并发上限、取消和清理。传输、生命周期与实际渲染的对话框回归通过。
 - #288：复用已有安全退出动作；⌘W 关闭窗口，⌘⇧W 关闭终端，⌘Q 退出。About 入口选择应用设置首页。
 - #289：保留现有系统通知派发器，补充 macOS 前台呈现回调；系统实际显示的验收仍未通过。
-- #291：核对无 JavaScript 移动导航、生成目录清理与保护、实际安装包名、贡献指南与当前 CI 策略。
+- #291：核对无 JavaScript 移动导航、生成目录清理与保护、实际安装包名、贡献指南与当前 CI 策略。等待期间分支追加了补全、加密备份和 Android 配对指南，旧 head 的 CI 因此取消。已保留更新并复核逐页版本与来源、关键用户步骤及相应构建/浏览器检查；新 head 的 CI 仍在运行。
 - #294：保留当前发行渠道的更新限制，修复过期后台结果、重置来源与链接；新增实际输入、键盘、保存、重开和清空的回归。
 
 17 条 Copilot 评论线程均已解决，且问题修复已对照代码核实。评论以具体问题和修改建议为主，属于建设性的代码审查。COMMENTED 不代表 APPROVED。
