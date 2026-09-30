@@ -1,0 +1,22 @@
+name: Release notes native acceptance
+on:
+  push:
+    branches: [ci/update-release-notes-20261001]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    uses: ./.github/workflows/linux-lua.yml
+  contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - run: python3 scripts/check_architecture.py --base 077595b4a4f1bda0be57e52324343785f69c5a3e
+      - run: cargo test --manifest-path tools/i18n-contract/Cargo.toml --locked
