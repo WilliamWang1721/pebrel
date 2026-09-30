@@ -55,7 +55,9 @@ def bundle(folder):
     executable.parent.mkdir(parents=True)
     shutil.copy2(binary, executable)
     plist = plistlib.loads((Path(source) / 'packaging/macos/Info.plist').read_bytes())
-    plist.update(CFBundleName='Pebrel', CFBundleDisplayName='Pebrel', CFBundleIdentifier='io.github.kuddev.pebrel', CFBundleShortVersionString='1.9.1')
+    manifest = (Path(source) / 'nebula_app/Cargo.toml').read_text()
+    version = re.search(r'^version\s*=\s*"([^"]+)"', manifest, re.MULTILINE).group(1)
+    plist.update(CFBundleName='Pebrel', CFBundleDisplayName='Pebrel', CFBundleIdentifier='io.github.kuddev.pebrel', CFBundleShortVersionString=version, CFBundleVersion=version)
     (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(plist))
     run(['codesign', '--force', '--deep', '--sign', '-', str(app)])
     run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(app)])
@@ -75,7 +77,7 @@ static BOOL request_granted = NO;
 static BOOL error_is_un = NO;
 void print_status(void) {
     [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
-        printf("%ld,%ld,%d,%d\\n", (long)settings.authorizationStatus, (long)request_error, request_granted, error_is_un);
+        printf("%ld,%ld,%d,%d,%d\\n", (long)settings.authorizationStatus, (long)request_error, request_granted, error_is_un, [[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"io.github.kuddev.pebrel"]);
         fflush(stdout);
         exit(0);
     }];
@@ -83,16 +85,18 @@ void print_status(void) {
 int main(int argc, const char **argv) {
     @autoreleasepool {
         [NSApplication sharedApplication];
+        [NSApp finishLaunching];
         if (argc > 1) {
             [NSApp activateIgnoringOtherApps:YES];
             [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound completionHandler:^(BOOL granted, NSError *error) { request_error = error.code; request_granted = granted; error_is_un = [error.domain isEqualToString:@"UNErrorDomain"]; print_status(); }];
         } else { print_status(); }
-        [[NSRunLoop currentRunLoop] run];
+        [NSApp run];
     }
     return 1;
 }
 ''')
     run(['clang', str(source_file), '-o', str(executable), '-framework', 'Cocoa', '-framework', 'UserNotifications'])
+    run(['codesign', '--force', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(executable)])
     run(['codesign', '--force', '--deep', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(app)])
     if not request:
         return int(run([str(executable)]).strip().split(',')[0])
@@ -157,6 +161,7 @@ def enable_test_notification_permission(executable):
             permission_diagnostics['permission_request_error_code'] = values[1]
             permission_diagnostics['permission_request_granted'] = bool(values[2])
             permission_diagnostics['permission_request_error_is_UNErrorDomain'] = bool(values[3])
+            permission_diagnostics['permission_probe_has_expected_bundle_identifier'] = bool(values[4])
         except subprocess.TimeoutExpired:
             permission_diagnostics['permission_request_timed_out'] = True
         except AssertionError:

@@ -17,10 +17,13 @@ jobs:
         include:
           - pr: 128
             scenario: portable
-            sha: cf55c0d16db6904b9eda3b05fbcc7afa6531cb0b
+            sha: c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c
           - pr: 288
             scenario: menu
-            sha: fc2529b125f3c890a54d997503e87c5da73ad101
+            sha: 571e0a388558d294439c1788b1200c59aef19e71
+          - pr: 289
+            scenario: notification
+            sha: 96ed7d3b18f6aff0c27baed22c6d9330638ccb7f
     runs-on: macos-26
     timeout-minutes: 100
     env:
