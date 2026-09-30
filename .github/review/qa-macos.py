@@ -61,6 +61,38 @@ def bundle(folder):
     return executable
 
 
+def notification_authorization_status():
+    app = output / 'authorization-probe/Pebrel.app'
+    executable = app / 'Contents/MacOS/policy-probe'
+    executable.parent.mkdir(parents=True)
+    source_file = output / 'authorization-probe.m'
+    source_file.write_text('''#import <Cocoa/Cocoa.h>
+#import <UserNotifications/UserNotifications.h>
+#include <stdio.h>
+int main(void) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+            printf("%ld\\n", (long)settings.authorizationStatus);
+            fflush(stdout);
+            exit(0);
+        }];
+        [[NSRunLoop currentRunLoop] run];
+    }
+    return 1;
+}
+''')
+    run(['clang', str(source_file), '-o', str(executable), '-framework', 'Cocoa', '-framework', 'UserNotifications'])
+    plist = plistlib.loads((Path(source) / 'packaging/macos/Info.plist').read_bytes())
+    plist.update(CFBundleExecutable='policy-probe', CFBundleName='Pebrel', CFBundleIdentifier='io.github.kuddev.pebrel')
+    (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(plist))
+    run(['codesign', '--force', '--deep', '--sign', '-', str(app)])
+    run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(app)])
+    state_file = output / 'authorization-state.txt'
+    run(['open', '-n', '-W', '--stdout', str(state_file), '--stderr', str(output / 'authorization-probe.err.log'), str(app)])
+    return int(state_file.read_text().strip())
+
+
 def start(executable, name, configured=True, args=(), launch_services=False):
     env = dict(os.environ)
     for key in ['PEBREL_CONFIG_DIR', 'NEBULA_CONFIG_DIR', 'PEBREL_CONFIG_FILE', 'NEBULA_CONFIG_FILE', 'PEBREL_GPUI_CONFIG', 'NEBULA_GPUI_CONFIG']:
@@ -208,7 +240,21 @@ end tell''')
             labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native notification banner exposes notice', 5)
         except AssertionError:
             # System preferences can suppress banners; inspect the actual notification list as well.
-            apple('tell application "System Events" to tell application process "ControlCenter" to click menu bar item "Clock" of menu bar 1')
+            apple('''tell application "System Events"
+repeat with processName in {"ControlCenter", "SystemUIServer"}
+if exists application process processName then
+repeat with itemRef in menu bar items of menu bar 1 of application process processName
+try
+if description of itemRef contains "Clock" then
+click itemRef
+return "opened notification list"
+end if
+end try
+end repeat
+end if
+end repeat
+error "Clock accessibility description not found"
+end tell''')
             labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center list exposes foreground notice', 20)
         (output / 'notification-center.txt').write_text(labels)
         assert notice in labels, 'Notification Center did not expose the delivered banner'
@@ -235,6 +281,10 @@ finally:
             diagnostics['pebrel_notification_permission_prompt'] = 'Pebrel' in center_text and 'Allow' in center_text
         except (AssertionError, subprocess.SubprocessError):
             diagnostics['notification_center_accessibility_failed'] = True
+        try:
+            diagnostics['notification_authorization_status'] = notification_authorization_status()
+        except (AssertionError, subprocess.SubprocessError, ValueError, OSError):
+            diagnostics['notification_authorization_probe_failed'] = True
         diagnostics['foreground_policy_install_failed'] = 'Could not enable foreground' in notification_log
         diagnostics['native_dispatch_failed'] = 'toast failed' in notification_log
         diagnostics['native_bundle_registration_missing'] = 'require a registered' in notification_log
