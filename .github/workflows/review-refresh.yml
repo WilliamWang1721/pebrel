@@ -1,0 +1,36 @@
+name: Refresh public review history
+on:
+  push:
+    branches: [codex/ready-six-source-20260930]
+    paths: [.github/workflows/review-refresh.yml]
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Kuddev/pebrel
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bundle only new public repository objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          git branch review-main HEAD
+          for number in 128 280 288 289 291 294; do
+            git fetch --no-tags https://github.com/Kuddev/pebrel.git "refs/pull/$number/head:refs/heads/review-pr$number"
+          done
+          git bundle create review-update.bundle refs/heads/review-main refs/heads/review-pr128 refs/heads/review-pr280 refs/heads/review-pr288 refs/heads/review-pr289 refs/heads/review-pr291 refs/heads/review-pr294 ^47cf590bb43ceb487ae527edc711117862273371 ^4465bd6ac2e7a23c7268e88c912b74a580e2811e ^76f5d33182d5d423510ffb4d92df2498a02fbda8 ^a4513de407f537facfb5ab5906684bd76bd182fa ^aa6e47767dec7a900a0422741f304e5de96f8551 ^0bc72eeed195b9a8bc0dc853eda6a26a5c6156ba ^4e47c5ca79a7627393daf1eb333b58a6a490fcdc
+          git show-ref --heads | rg 'refs/heads/review-' >review-refs.txt
+          ls -lh review-update.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-review-update
+          path: |
+            review-update.bundle
+            review-refs.txt
+          retention-days: 3
