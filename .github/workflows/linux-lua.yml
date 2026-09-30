@@ -21,7 +21,7 @@ on:
 concurrency:
   group: native-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   # main 的过期验证也应释放 runner；手动诊断和发布调用不互相取消。
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/notification-tools')) }}
 
 permissions:
   contents: read
