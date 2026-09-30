@@ -14,6 +14,7 @@ output = Path(output).resolve()
 output.mkdir(parents=True, exist_ok=True)
 results = []
 processes = []
+permission_diagnostics = {}
 
 
 def run(args, **kwargs):
@@ -91,6 +92,46 @@ int main(void) {
     state_file = output / 'authorization-state.txt'
     run(['open', '-n', '-W', '--stdout', str(state_file), '--stderr', str(output / 'authorization-probe.err.log'), str(app)])
     return int(state_file.read_text().strip())
+
+
+def enable_test_notification_permission(executable):
+    # Changes only the synthetic Pebrel bundle on this disposable Actions runner.
+    permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
+    run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(executable.parents[2])])
+    if permission_diagnostics['initial_notification_authorization_status'] != 1:
+        return
+    run(['open', 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=io.github.kuddev.pebrel'])
+    def allow():
+        return apple('''tell application "System Events"
+tell application process "System Settings"
+set frontmost to true
+set allElements to entire contents of window 1
+set isPebrel to false
+repeat with e in allElements
+try
+if name of e is "Pebrel" or value of e is "Pebrel" then set isPebrel to true
+end try
+end repeat
+if not isPebrel then return "waiting"
+repeat with e in allElements
+try
+if name of e is "Allow notifications" or description of e is "Allow notifications" then
+if role of e is "AXCheckBox" or role of e is "AXSwitch" then
+if value of e is 0 then click e
+return "enabled Pebrel notifications"
+end if
+end if
+end try
+end repeat
+return "waiting"
+end tell
+end tell''').strip() == 'enabled Pebrel notifications'
+    try:
+        wait_for(allow, 'enabled notification permission for the synthetic Pebrel test bundle', 20)
+        permission_diagnostics['synthetic_notification_permission_enabled'] = True
+    except (AssertionError, subprocess.SubprocessError):
+        permission_diagnostics['synthetic_notification_permission_enabled'] = False
+    apple('tell application "System Settings" to quit')
 
 
 def start(executable, name, configured=True, args=(), launch_services=False):
@@ -209,6 +250,7 @@ try:
         run(['open', '-a', '/System/Library/CoreServices/NotificationCenter.app'])
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
+        enable_test_notification_permission(executable)
         notice = 'Pebrel foreground acceptance 20260930'
         p, env = start(executable, 'notification', launch_services=True, args=['-e', '/bin/zsh', '-l', '-c', f'sleep 12; printf "\\033]9;{notice}\\007"; sleep 45'])
         wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'notification source window exists')
@@ -264,7 +306,7 @@ end tell''')
         raise ValueError(scenario)
 finally:
     shot('99-final')
-    diagnostics = {}
+    diagnostics = dict(permission_diagnostics)
     if scenario == 'portable':
         diagnostics['process_exit_codes'] = [p.poll() for p, _ in processes]
         root = output / 'portable' / 'Pebrel Data'
