@@ -15,9 +15,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - pr: 128
+            scenario: portable
+            sha: 0ed8ca1ee655ae1eded7933a12d8a3dfa1f776af
+          - pr: 288
+            scenario: menu
+            sha: 7fc57c80541d6ef400a8187225e7b1bfd2d3d3ee
           - pr: 289
             scenario: notification
-            sha: 4f9b99a99db0ef1c9e93b75d4e30dd017d841d79
+            sha: 665402b56d7021dc0b63381712291b62aa8c656c
     runs-on: macos-26
     timeout-minutes: 100
     env:
