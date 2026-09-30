@@ -34,11 +34,27 @@ fn resolve_with_settings(
         return Ok(None);
     }
     if settings.ssh_proxy_mode == nebula_settings::ProxyModeName::Custom {
-        return proxy_from_url(
-            &settings.ssh_proxy_url,
-            &crate::ssh_proxy::parse_no_proxy(&settings.ssh_proxy_no_proxy),
-        )
-        .map(Some);
+        let crate::ssh_proxy::ProxyLink::Server(server) =
+            crate::ssh_proxy::ProxyLink::parse(&settings.ssh_proxy_url)
+                .map_err(|_| ureq::Error::InvalidProxyUrl)?
+        else {
+            return Err(ureq::Error::InvalidProxyUrl);
+        };
+        let protocol = match server.scheme {
+            crate::ssh_proxy::ProxyScheme::Socks5 => ProxyProtocol::Socks5,
+            crate::ssh_proxy::ProxyScheme::HttpConnect => ProxyProtocol::Http,
+        };
+        let mut builder = Proxy::builder(protocol).host(&server.host).port(server.port);
+        if let Some(username) = &server.username {
+            builder = builder.username(username);
+        }
+        if let Some(password) = &server.password {
+            builder = builder.password(password);
+        }
+        for entry in crate::ssh_proxy::parse_no_proxy(&settings.ssh_proxy_no_proxy) {
+            builder = builder.no_proxy(&entry);
+        }
+        return builder.build().map(Some);
     }
     Ok(automatic())
 }
@@ -194,6 +210,16 @@ mod tests {
         assert_eq!(proxy.protocol(), ProxyProtocol::Socks5);
         assert_eq!(proxy.host(), "custom.local");
         assert!(proxy.is_no_proxy(&"https://github.com".parse().unwrap()));
+        settings.ssh_proxy_url = "custom.local:1081".into();
+        let proxy = super::resolve_with_settings(&settings, automatic).unwrap().unwrap();
+        assert_eq!(proxy.protocol(), ProxyProtocol::Socks5);
+        assert_eq!(proxy.port(), 1081);
+        settings.ssh_proxy_url = "http://user:p%40ss@custom.local".into();
+        let proxy = super::resolve_with_settings(&settings, automatic).unwrap().unwrap();
+        assert_eq!(proxy.protocol(), ProxyProtocol::Http);
+        assert_eq!(proxy.port(), 8080);
+        assert_eq!(proxy.username(), Some("user"));
+        assert_eq!(proxy.password(), Some("p@ss"));
         settings.ssh_proxy_url = "invalid proxy".into();
         assert!(
             super::resolve_with_settings(&settings, || panic!("invalid custom must not fall back"))

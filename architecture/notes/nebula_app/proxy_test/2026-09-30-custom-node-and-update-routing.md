@@ -35,7 +35,9 @@ existing twelve-second total deadline also bounds DNS, proxy and TLS work.
 
 Update proxy use is independent of terminal proxy use. Disabled means an explicit
 `None` proxy, overriding environment detection. Enabled custom mode uses the
-network proxy URL and exclusions; other modes retain existing automatic resolution.
+network proxy URL and exclusions, reusing the existing parser for legacy bare
+SOCKS5 addresses, protocol default ports and encoded credentials; other modes
+retain existing automatic resolution.
 Invalid custom proxies are errors, not a silent direct fallback. Each update
 operation reads current settings when its client is created; running downloads
 keep their client. No process environment is mutated.
