@@ -37,7 +37,8 @@ Update proxy use is independent of terminal proxy use. Disabled means an explici
 `None` proxy, overriding environment detection. Enabled custom mode uses the
 network proxy URL and exclusions, reusing the existing parser for legacy bare
 SOCKS5 addresses, protocol default ports and encoded credentials; other modes
-retain existing automatic resolution.
+retain existing automatic resolution. IPv6 hosts retain URL brackets; credentials
+that the update client cannot preserve return an error rather than being changed.
 Invalid custom proxies are errors, not a silent direct fallback. Each update
 operation reads current settings when its client is created; running downloads
 keep their client. No process environment is mutated.

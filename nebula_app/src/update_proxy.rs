@@ -44,7 +44,12 @@ fn resolve_with_settings(
             crate::ssh_proxy::ProxyScheme::Socks5 => ProxyProtocol::Socks5,
             crate::ssh_proxy::ProxyScheme::HttpConnect => ProxyProtocol::Http,
         };
-        let mut builder = Proxy::builder(protocol).host(&server.host).port(server.port);
+        let host = if server.host.contains(':') {
+            format!("[{}]", server.host)
+        } else {
+            server.host.clone()
+        };
+        let mut builder = Proxy::builder(protocol).host(&host).port(server.port);
         if let Some(username) = &server.username {
             builder = builder.username(username);
         }
@@ -54,7 +59,13 @@ fn resolve_with_settings(
         for entry in crate::ssh_proxy::parse_no_proxy(&settings.ssh_proxy_no_proxy) {
             builder = builder.no_proxy(&entry);
         }
-        return builder.build().map(Some);
+        let proxy = builder.build()?;
+        if proxy.username() != server.username.as_deref()
+            || proxy.password() != server.password.as_deref()
+        {
+            return Err(ureq::Error::InvalidProxyUrl);
+        }
+        return Ok(Some(proxy));
     }
     Ok(automatic())
 }
@@ -214,12 +225,18 @@ mod tests {
         let proxy = super::resolve_with_settings(&settings, automatic).unwrap().unwrap();
         assert_eq!(proxy.protocol(), ProxyProtocol::Socks5);
         assert_eq!(proxy.port(), 1081);
+        settings.ssh_proxy_url = "socks5://[::1]:1080".into();
+        let proxy = super::resolve_with_settings(&settings, automatic).unwrap().unwrap();
+        assert_eq!(proxy.host(), "[::1]");
+        assert_eq!(proxy.port(), 1080);
         settings.ssh_proxy_url = "http://user:p%40ss@custom.local".into();
         let proxy = super::resolve_with_settings(&settings, automatic).unwrap().unwrap();
         assert_eq!(proxy.protocol(), ProxyProtocol::Http);
         assert_eq!(proxy.port(), 8080);
         assert_eq!(proxy.username(), Some("user"));
         assert_eq!(proxy.password(), Some("p@ss"));
+        settings.ssh_proxy_url = "socks5://user:p%3Ass@custom.local".into();
+        assert!(super::resolve_with_settings(&settings, automatic).is_err());
         settings.ssh_proxy_url = "invalid proxy".into();
         assert!(
             super::resolve_with_settings(&settings, || panic!("invalid custom must not fall back"))
