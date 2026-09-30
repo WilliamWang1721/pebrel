@@ -1,60 +1,49 @@
 # Pebrel 六个 PR 的合并准备报告
 
-状态：修复已推送，最终 CI 仍在完成，尚未达到 100% Ready to Merge。记录时间：2026-09-30 17:25 UTC。
+修复已普通推送，六个分支均已同步到上游 2.1.0 的 main `077595b4a4f1bda0be57e52324343785f69c5a3e`。尚未达到 100% Ready to Merge：最终 CI 未全部结束，另有维护者审批、Draft 状态和通知原生验收门槛。没有 merge PR 或 force push。记录时间：2026-09-30 18:10:05 UTC。
 
-目标 main：`077595b4a4f1bda0be57e52324343785f69c5a3e`。六个 PR 均已同步到该版本。没有合并 PR，也没有 force push。
-
-| PR | 最终提交 | 必需检查 | 正式检查记录 |
+| PR | 当前提交 | 必需检查 | 正式记录 |
 | --- | --- | --- | --- |
-| [#128](https://github.com/Kuddev/pebrel/pull/128) | `c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36749669526) |
-| [#280](https://github.com/Kuddev/pebrel/pull/280) | `f5ab21af665c73b40809fc1a82053123397483e6` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750270127) |
-| [#288](https://github.com/Kuddev/pebrel/pull/288) | `571e0a388558d294439c1788b1200c59aef19e71` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750404192) |
-| [#289](https://github.com/Kuddev/pebrel/pull/289) | `96ed7d3b18f6aff0c27baed22c6d9330638ccb7f` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750433708) |
-| [#291](https://github.com/Kuddev/pebrel/pull/291) | `81418821a638fbf8675054bf4b908a11a138f653` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468358) |
-| [#294](https://github.com/Kuddev/pebrel/pull/294) | `edb18803dc308f56479e1155b481deca49c4ad48` | 架构、格式和大小检查通过；完整原生 CI 仍在运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750507475) |
+| [#128](https://github.com/Kuddev/pebrel/pull/128) macOS 便携启动 | `c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36749669526) |
+| [#280](https://github.com/Kuddev/pebrel/pull/280) SSH 本地端口转发 | `f5ab21af665c73b40809fc1a82053123397483e6` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750270127) |
+| [#288](https://github.com/Kuddev/pebrel/pull/288) macOS 原生菜单 | `571e0a388558d294439c1788b1200c59aef19e71` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750404192) |
+| [#289](https://github.com/Kuddev/pebrel/pull/289) macOS 前台系统通知 | `96ed7d3b18f6aff0c27baed22c6d9330638ccb7f` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750433708) |
+| [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `81418821a638fbf8675054bf4b908a11a138f653` | 3/10；其余仍运行或排队 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468358) |
+| [#294](https://github.com/Kuddev/pebrel/pull/294) 自定义更新来源 | `edb18803dc308f56479e1155b481deca49c4ad48` | 10/10 全部通过 | [正式 CI](https://github.com/Kuddev/pebrel/actions/runs/36750507475) |
 
-## 修复与复查
+## 修复与代码复查
 
-- #128：保留最新 main 的启动行为，修复 daemon/转位路径判断，并修复真实点击便携启动后出现的 GPUI 初始化崩溃。使用已锁定的 Core Foundation 绑定直接调用原生提示，避免 RFD 提前初始化普通 NSApplication。
-- #280：解决 SSH 模块合并冲突，保留当前 transcript 模块，核对 listener 重试、真实拒绝协议、并发上限、取消和清理。传输、生命周期与实际渲染的对话框回归通过。
-- #288：复用已有安全退出动作；⌘W 关闭窗口，⌘⇧W 关闭终端，⌘Q 退出。About 入口选择应用设置首页。
-- #289：保留现有系统通知派发器，补充 macOS 前台呈现回调；系统实际显示的验收仍未通过。
-- #291：核对无 JavaScript 移动导航、生成目录清理与保护、实际安装包名、贡献指南与当前 CI 策略。等待期间分支追加了补全、加密备份和 Android 配对指南，旧 head 的 CI 因此取消。已保留更新并复核逐页版本与来源、关键用户步骤及相应构建/浏览器检查；新 head 的 CI 仍在运行。
-- #294：保留当前发行渠道的更新限制，修复过期后台结果、重置来源与链接；新增实际输入、键盘、保存、重开和清空的回归。
+- #128：保留当前 main 的启动、completion、mobile、plugin 和 login 行为，修复 daemon 与 App Translocation 判断。原生验收发现点击便携启动后 GPUI 初始化崩溃；改用已锁定的 Core Foundation 原生提示，避免 RFD 提前创建普通 NSApplication。
+- #280：保留当前 SSH transcript 模块，修复合并冲突；核对 listener 重试、真实 SSH 通道拒绝、64 个并发任务上限，以及取消、退出和清理。复用 SSH 传输与现有对话框。
+- #288：复用已有退出动作，明确 ⌘W 关闭窗口、⌘⇧W 关闭终端、⌘Q 退出；编辑菜单复用 GPUI 输入动作，About 入口选择应用设置首页。修复旧 keymap 与 Quit 默认绑定的冲突。
+- #289：复用现有系统通知派发器，为已锁定的 macOS delegate 补齐前台呈现回调。可见性验收仍未通过，不能以派发成功代替实际显示。
+- #291：核对无 JavaScript 的移动导航、生成目录清理保护、实际安装包名及贡献指南。保留等待期间新增的补全、加密备份、Android 配对指南，并核对逐页来源版本与操作步骤。
+- #294：保留发行渠道的更新限制；修复过期后台结果、来源重置与 About 链接。实际输入、键盘替换、校验、保存、重开和清空的回归与主线新主题编辑测试共同保留。
 
-17 条 Copilot 评论线程均已解决，且问题修复已对照代码核实。评论以具体问题和修改建议为主，属于建设性的代码审查。COMMENTED 不代表 APPROVED。
+17 条 Copilot 评论线程全部已解决，问题修复已对照代码核实。评论以具体问题和修改建议为主，属于建设性的审查；COMMENTED 不等于 APPROVED。
 
-完成了正确性与最小性两轮复查，并在每次 main 同步后再次核对最终差异。最后一次同步纳入 2.1.0 版本、依赖和主题编辑改进，各 PR 的功能范围与前一轮一致。本地格式、空白、架构与 cfg 预算检查通过；87 项 CI/架构 Python 检查和 5 项 PR 大小检查通过。最终正式 CI 结果以表中 head 的记录为准。
-
-## 原生交互证据
-
-[#128、#288 前一轮 5ff2f3e 基线提交的原生验收](https://github.com/WilliamWang1721/pebrel/actions/runs/36738955428)：两个作业均通过。
-
-- #128：真实点击三种启动选择，检查便携配置、CLI 连接、正常退出、移动应用及数据后的重启。
-- #288：真实菜单点击、创建终端和窗口，以及 ⌘⇧W、⌘W、⌘Q 的对应关闭/退出行为。
-- #280 的 macOS 必需报告按照路径选择通过，没有实际执行 macOS 工作负载。其他 PR 的 macOS 工作负载按正式 CI 策略选择；未执行的工作负载没有被描述为执行通过。
-
-[#289 最近的系统显示验收](https://github.com/WilliamWang1721/pebrel/actions/runs/36736719358)未通过：同一签名测试 App 的通知授权申请超时，未检测到对应授权提示，随后状态为拒绝。发送、注册、前台回调安装和激活没有报告错误，但这不能证明通知实际可见。该验收基于 `665402b56d7021dc0b63381712291b62aa8c656c`；当前 head 又合入主线版本与主题改进，桌面通知实现保持一致。此记录仍是失败的验收证据。
-
-## 剩余门槛
-
-1. 完成所有最终 head 的必需 CI；此前 head 的绿灯不能替代。
-2. main 要求 Kuddev 的一次新 code-owner 审批；作者不能代替。更新会撤销旧审批，#280 的前次审批已被撤销。
-3. #288 仍为 Draft。当前 GitHub 集成修改上游 PR、发布验证评论和转换 Ready 均返回 403/FORBIDDEN，因此上游描述仍保留较早提交的验证说明。
-4. #289 系统通知实际显示的验收仍需完成。
-
-自动审批曾拒绝重新打包原生日志和截图，理由是它们可能包含 runner 路径、命令及环境信息。已请求用户明确授权，尚未收到答复。被拒绝的产物没有重新导出；后续仅导出合成检查名称、布尔值和数值状态。
-
-本轮由 Codex（GPT-6）协助完成；具体模型 variant 与 reasoning effort 未在当前运行环境提供。
-
-## 2.1.0 主线同步
-
-六个 PR 均以普通合并提交同步到 `077595b`。正确性复查确认包版本为 2.1.0、主线翻译不丢失且无重复键、#128 同时保留主线依赖与原生启动修复、#294 同时保留新主题测试与更新来源回归。最小性复查确认功能差异的文件范围不变，没有修改合并规则或添加产品内验收工作流。格式、空白和架构检查通过。#291 等待期间新增的补全、加密备份、Android 配对指南已核对并保留。
-
-最终 2.1.0 提交的 macOS 原生验收：[run 36750717366](https://github.com/WilliamWang1721/pebrel/actions/runs/36750717366)。#128 和 #288 已通过；#289 未通过系统显示验收。便携启动、菜单和通知分别绑定此表中的确切提交。通知授权探针补齐 Cocoa 启动生命周期、签名标识和当前版本元数据，产物仍仅包含合成检查名、布尔值与数值；不会导出此前被拒绝的原始日志或截图。历史提交的原生成功记录不代替本轮结果。
+已完成正确性与最小性两轮独立复查，每次主线同步后重新核对最终差异。最终本地树与发布树一致，工作区干净；版本、翻译完整性与重复键检查通过，格式、空白和架构检查通过。没有修改合并规则或把 PR 专用验收工作流加入产品差异。#291 的最终文档构建与桌面/移动浏览器检查通过：[文档 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468254)；本地 9 项文档测试通过。
 
 ## 最终提交的原生证据
 
-#128 `c99efb4` 的三种启动选择、驻留端点与 CLI、正常退出、移动应用及数据后重启均通过，四个进程退出码均为 0，未发生 GPUI 初始化崩溃。#288 `571e0a3` 的原生 New tab、创建窗口及 ⌘⇧W / ⌘W / ⌘Q 操作均通过。对应 run 36750717366 的结构化结果已下载复查。
+[#128、#288 原生验收 run 36750717366](https://github.com/WilliamWang1721/pebrel/actions/runs/36750717366)均通过，结构化结果已下载复查：
 
-#289 `96ed7d3` 在[独立权限流程重测 36753918280](https://github.com/WilliamWang1721/pebrel/actions/runs/36753918280)仍未观察到通知。测试 helper 的 bundle ID 正确，初始授权为 0（未决定），申请超时后为 1（拒绝），系统设置授权步骤未成功。注册、派发、前台 policy 安装和激活均未报告错误。不能据此宣称系统通知可见或确定归因于操作系统；此项仍为验收阻塞。两次运行仅导出合成布尔/数值诊断，原始日志与截图没有重新打包公开。进一步界面诊断需要此前请求的明确授权。
+- #128 `c99efb4`：真实点击三种启动选择、便携配置、驻留端点与 CLI、正常退出、移动应用和数据后重启。四个进程退出码均为 0，未出现 GPUI 初始化崩溃。
+- #288 `571e0a3`：原生 New tab、创建窗口、⌘⇧W 关闭终端、⌘W 关闭窗口和 ⌘Q 正常退出。
+
+#280 的 macOS 必需报告按既有路径策略汇报成功，没有实际执行 macOS 工作负载；本 PR 的实际原生作业覆盖 Linux、Windows x64 和 Windows ARM。不会把路径选择结果描述成五个平台都执行了测试。
+
+[#289 权限流程重测 run 36753918280](https://github.com/WilliamWang1721/pebrel/actions/runs/36753918280)绑定最终提交 `96ed7d3`，仍未观察到通知。测试 helper 的 bundle ID 正确；初始授权 0（未决定），申请超时后为 1（拒绝），系统设置授权步骤未成功。注册、派发、前台 policy 安装和激活均未报告错误。这不能证明系统实际显示成功，也不足以确定归因于操作系统。此项仍为验收阻塞。
+
+## 剩余合并门槛
+
+1. 所有最终提交的必需 CI 都须完成且通过，历史提交的绿灯不能替代。
+2. main 要求 Kuddev 的一次新 code-owner 批准；作者不能代替，提交更新会撤销旧审批。六个 PR 目前均没有有效新批准，#280 的前次批准已被撤销。
+3. #288 仍是 Draft。当前 GitHub 连接修改上游 PR、发布验证评论和转换 Ready 均返回 403/FORBIDDEN；因此上游 PR 描述仍含较早提交的验证信息。
+4. #289 系统通知实际显示还需完成原生界面诊断和验收。
+
+已在本地准备截图诊断方案：只重测 #289 的上述最终提交，使用全新的 macOS GitHub runner 和合成配置，将测试 App 的 PNG 截图及合成 acceptance.json 上传至公开 fork，保留 7 天，不上传原始日志。尚未执行公开截图上传。
+
+自动审批此前拒绝重新打包公开原始日志和截图，理由是可能包含 runner 路径、命令或环境信息。已请求用户明确授权，尚未收到答复；被拒绝的产物没有重新导出。后续验收只导出了合成检查名称、布尔值和数值诊断。
+
+本轮由 Codex（GPT-6）协助完成；具体模型 variant 和 reasoning effort 未在当前运行环境提供。
