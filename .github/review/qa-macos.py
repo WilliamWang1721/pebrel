@@ -204,7 +204,12 @@ end if
 end repeat
 return labels as text
 end tell''')
-        labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center exposes notice', 30)
+        try:
+            labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native notification banner exposes notice', 5)
+        except AssertionError:
+            # System preferences can suppress banners; inspect the actual notification list as well.
+            apple('tell application "System Events" to tell application process "ControlCenter" to click menu bar item "Clock" of menu bar 1')
+            labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center list exposes foreground notice', 20)
         (output / 'notification-center.txt').write_text(labels)
         assert notice in labels, 'Notification Center did not expose the delivered banner'
         assert 'toast failed' not in (output / 'notification.log').read_text()
@@ -225,6 +230,11 @@ finally:
         diagnostics['gpui_missing_application_ivar'] = 'ivar' in portable_log and 'panicked at' in portable_log
     if scenario == 'notification' and (output / 'notification.log').exists():
         notification_log = (output / 'notification.log').read_text()
+        try:
+            center_text = center_labels()
+            diagnostics['pebrel_notification_permission_prompt'] = 'Pebrel' in center_text and 'Allow' in center_text
+        except (AssertionError, subprocess.SubprocessError):
+            diagnostics['notification_center_accessibility_failed'] = True
         diagnostics['foreground_policy_install_failed'] = 'Could not enable foreground' in notification_log
         diagnostics['native_dispatch_failed'] = 'toast failed' in notification_log
         diagnostics['native_bundle_registration_missing'] = 'require a registered' in notification_log
