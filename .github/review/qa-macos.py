@@ -147,6 +147,7 @@ try:
         choose(p.pid, 'Use portable mode')
         data = executable.parents[2].parent / 'Pebrel Data'
         wait_for(lambda: (data / '.pebrel-portable').is_file(), 'portable choice creates adjacent marker')
+        wait_for(lambda: (data / 'runtime.port').is_file(), 'portable resident endpoint published', 60)
         wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'portable runtime accepts matching CLI')
         shot('02-portable-running')
         (data / 'acceptance-sentinel.txt').write_text('retained after move')
@@ -169,6 +170,8 @@ try:
         key(p.pid, 'q')
         wait_for(lambda: p.poll() is not None, 'normal app graceful exit')
     elif scenario == 'notification':
+        run(['open', '-a', '/System/Library/CoreServices/NotificationCenter.app'])
+        wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
         notice = 'Pebrel foreground acceptance 20260930'
         p, env = start(executable, 'notification', args=['-e', '/bin/zsh', '-l', '-c', f'sleep 12; printf "\\033]9;{notice}\\007"; sleep 45'])
@@ -176,7 +179,9 @@ try:
         apple('set frontmost of p to true', p.pid)
         wait_for(lambda: 'system toast source' in (output / 'notification.log').read_text(), 'foreground OSC 9 reaches system delivery', 35)
         shot('01-foreground-notification')
-        labels = apple('tell application "System Events"\nset labels to {}\nrepeat with e in (entire contents of application process "NotificationCenter")\ntry\nset end of labels to value of e as text\nend try\nend repeat\nreturn labels as text\nend tell')
+        def center_labels():
+            return apple('tell application "System Events"\nset labels to {}\nrepeat with e in (entire contents of application process "NotificationCenter")\ntry\nset end of labels to value of e as text\nend try\nend repeat\nreturn labels as text\nend tell')
+        labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center exposes notice', 30)
         (output / 'notification-center.txt').write_text(labels)
         assert notice in labels, 'Notification Center did not expose the delivered banner'
         assert 'toast failed' not in (output / 'notification.log').read_text()
@@ -185,7 +190,14 @@ try:
         raise ValueError(scenario)
 finally:
     shot('99-final')
-    (output / 'acceptance.json').write_text(json.dumps({'scenario': scenario, 'checks': results}, indent=2))
+    diagnostics = {}
+    if scenario == 'portable':
+        diagnostics['process_exit_codes'] = [p.poll() for p, _ in processes]
+        root = output / 'portable' / 'Pebrel Data'
+        diagnostics['portable_endpoint'] = (root / 'runtime.port').is_file()
+        diagnostics['portable_owner_lock'] = (root / 'runtime.port.lock').is_file()
+        diagnostics['portable_process_panicked'] = 'panicked at' in (output / 'portable.log').read_text() if (output / 'portable.log').exists() else False
+    (output / 'acceptance.json').write_text(json.dumps({'scenario': scenario, 'checks': results, 'diagnostics': diagnostics}, indent=2))
     for p, log in processes:
         if p.poll() is None:
             p.terminate()
