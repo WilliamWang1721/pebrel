@@ -17,13 +17,13 @@ jobs:
         include:
           - pr: 128
             scenario: portable
-            sha: 2668d94299a8a1ab651656a5601481175a7b9122
+            sha: 99898d1eae26a66f655fb1c1455d13533aa3dd02
           - pr: 288
             scenario: menu
-            sha: 6a782552ac25bf3e2c62f22d7fb2b647c17bfddb
+            sha: 9e07c9f2b5da3562c1787e2214f011fdaf917cfb
           - pr: 289
             scenario: notification
-            sha: 51d23ec2819a6a00c0a6b1586d7959c3d82597e2
+            sha: 1b9e69753bc10c663d2ab6e86ee2e3f551567d17
     runs-on: macos-26
     timeout-minutes: 100
     env:
@@ -56,6 +56,6 @@ jobs:
         if: always()
         with:
           name: native-acceptance-pr-${{ matrix.pr }}-${{ matrix.sha }}
-          path: ${{ runner.temp }}/acceptance/
+          path: ${{ runner.temp }}/acceptance/acceptance.json
           retention-days: 7
           if-no-files-found: error
