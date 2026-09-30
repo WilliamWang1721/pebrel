@@ -1,0 +1,10 @@
+name: Notification tools validation
+on:
+  push:
+    branches: [qa/notification-tools]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    uses: ./.github/workflows/linux-lua.yml
