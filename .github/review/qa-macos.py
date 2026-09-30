@@ -70,9 +70,12 @@ def notification_authorization_status(request=False):
     source_file.write_text('''#import <Cocoa/Cocoa.h>
 #import <UserNotifications/UserNotifications.h>
 #include <stdio.h>
+static NSInteger request_error = 0;
+static BOOL request_granted = NO;
+static BOOL error_is_un = NO;
 void print_status(void) {
     [[UNUserNotificationCenter currentNotificationCenter] getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
-        printf("%ld\\n", (long)settings.authorizationStatus);
+        printf("%ld,%ld,%d,%d\\n", (long)settings.authorizationStatus, (long)request_error, request_granted, error_is_un);
         fflush(stdout);
         exit(0);
     }];
@@ -81,7 +84,7 @@ int main(int argc, const char **argv) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         if (argc > 1) {
-            [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound completionHandler:^(BOOL granted, NSError *error) { print_status(); }];
+            [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound completionHandler:^(BOOL granted, NSError *error) { request_error = error.code; request_granted = granted; error_is_un = [error.domain isEqualToString:@"UNErrorDomain"]; print_status(); }];
         } else { print_status(); }
         [[NSRunLoop currentRunLoop] run];
     }
@@ -89,9 +92,9 @@ int main(int argc, const char **argv) {
 }
 ''')
     run(['clang', str(source_file), '-o', str(executable), '-framework', 'Cocoa', '-framework', 'UserNotifications'])
-    run(['codesign', '--force', '--deep', '--sign', '-', str(app)])
+    run(['codesign', '--force', '--deep', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(app)])
     if not request:
-        return int(run([str(executable)]).strip())
+        return int(run([str(executable)]).strip().split(',')[0])
     proc = subprocess.Popen([str(executable), 'request'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline = time.monotonic() + 25
@@ -124,7 +127,7 @@ end tell''').strip()
                 permission_diagnostics['synthetic_permission_prompt_accepted'] = True
             time.sleep(.5)
         stdout, _ = proc.communicate(timeout=5)
-        return int(stdout.strip())
+        return [int(v) for v in stdout.strip().split(',')]
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -137,7 +140,11 @@ def enable_test_notification_permission(executable):
     run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(executable.parents[2])])
     if permission_diagnostics['initial_notification_authorization_status'] == 0:
         try:
-            permission_diagnostics['requested_notification_authorization_status'] = notification_authorization_status(request=True)
+            values = notification_authorization_status(request=True)
+            permission_diagnostics['requested_notification_authorization_status'] = values[0]
+            permission_diagnostics['permission_request_error_code'] = values[1]
+            permission_diagnostics['permission_request_granted'] = bool(values[2])
+            permission_diagnostics['permission_request_error_is_UNErrorDomain'] = bool(values[3])
         except (AssertionError, subprocess.SubprocessError, ValueError, OSError):
             permission_diagnostics['synthetic_permission_request_failed'] = True
         return
