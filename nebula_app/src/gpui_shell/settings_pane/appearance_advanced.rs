@@ -177,6 +177,16 @@ impl SettingsPane {
             .w_full()
             .gap(px(GROUP_GAP))
             .child(terminal)
+            .child(
+                self.group(language.text(crate::i18n::Message::SettingsBlocksExperimental), cx)
+                    .child(self.switch_row(
+                        "block_terminal",
+                        language.text(crate::i18n::Message::SettingsBlocksTitle),
+                        language.text(crate::i18n::Message::SettingsBlocksDescription),
+                        self.runtime.block_terminal,
+                        cx,
+                    )),
+            )
             .child(cursor)
             .child(interface)
             .child(custom_background)

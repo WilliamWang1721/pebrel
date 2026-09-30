@@ -1,6 +1,5 @@
 //! Exports the `Term` type which is a high-level API for the Grid.
 
-use std::collections::VecDeque;
 use std::ops::{Index, IndexMut, Range};
 use std::sync::Arc;
 use std::{cmp, mem, ptr, str};
@@ -35,6 +34,7 @@ mod keyboard;
 #[cfg(test)]
 mod keyboard_contract_tests;
 mod prompt;
+pub use prompt::CommandRegion;
 mod redraw_anchor;
 mod renderable;
 pub mod search;
@@ -228,15 +228,7 @@ pub struct Term<T> {
     /// Information about damaged cells.
     damage: TermDamageState,
 
-    /// Absolute line numbers of shell prompt rows reported via OSC 133;A
-    /// (see [`Grid::scrolled_out`] for the numbering). Strictly increasing;
-    /// stale entries are pruned lazily. Primary screen only.
-    nebula_prompt_marks: VecDeque<usize>,
-
-    /// Whether OSC 133 currently identifies this pane as accepting shell input.
-    nebula_prompt_active: bool,
-    /// OSC 133;B input start in absolute grid coordinates.
-    nebula_prompt_input: Option<(usize, Column)>,
+    nebula_shell: prompt::ShellState,
 
     /// One-shot suppression of the next primary-DA answer: the side-loaded
     /// ConPTY host's bring-up DA1 query was already answered by the response
@@ -290,6 +282,8 @@ pub struct Config {
     /// same row layout. The alternate screen intentionally keeps normal
     /// behavior because applications repaint it themselves.
     pub conpty_resize: bool,
+    /// Retain semantic command regions alongside shell prompt marks.
+    pub command_regions: bool,
 }
 
 impl Default for Config {
@@ -303,6 +297,7 @@ impl Default for Config {
             osc52: Default::default(),
             suppress_bringup_da1: false,
             conpty_resize: false,
+            command_regions: false,
         }
     }
 }
@@ -395,14 +390,12 @@ impl<T> Term<T> {
             // 默认按暗底起步：Nebula 的默认主题是深色，宿主在首次
             // `set_color_scheme` 前不会有订阅方，值不会被读到。
             color_scheme_dark: true,
+            nebula_shell: prompt::ShellState::new(config.command_regions),
             config,
             grid,
             tabs,
             inactive_keyboard_mode_stack: Default::default(),
             keyboard_mode_stack: Default::default(),
-            nebula_prompt_marks: Default::default(),
-            nebula_prompt_active: false,
-            nebula_prompt_input: None,
             active_charset: Default::default(),
             vi_mode_cursor: Default::default(),
             cursor_style: Default::default(),
@@ -753,6 +746,7 @@ impl<T> Term<T> {
         delta = cmp::min(cmp::max(delta, min_delta), history_size as i32);
         self.vi_mode_cursor.point.line += delta;
 
+        let shell_anchors = self.shell_anchors();
         let is_alt = self.mode.contains(TermMode::ALT_SCREEN);
         if self.config.conpty_resize {
             // The primary screen might currently be inactive. Preserve ConPTY
@@ -770,10 +764,7 @@ impl<T> Term<T> {
             self.inactive_grid.resize(is_alt, num_lines, num_cols);
         }
 
-        // Reflow rewraps history rows, so absolute prompt-mark lines no longer
-        // match; drop them rather than jump to shifted positions.
-        self.nebula_prompt_marks.clear();
-        self.nebula_prompt_input = None;
+        self.restore_shell_anchors(shell_anchors);
 
         // Invalidate selection and tabs only when necessary.
         if old_cols != num_cols {
@@ -1937,9 +1928,7 @@ impl<T: EventListener> Handler for Term<T> {
         self.cursor_blinking_override = None;
         self.grid.reset();
         self.inactive_grid.reset();
-        self.nebula_prompt_marks.clear();
-        self.nebula_prompt_input = None;
-        self.nebula_prompt_active = false;
+        self.nebula_shell.clear();
         self.scroll_region = Line(0)..Line(self.screen_lines() as i32);
         self.tabs = TabStops::new(self.columns());
         self.title_stack = Vec::new();

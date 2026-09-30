@@ -335,6 +335,7 @@ impl TerminalView {
             link_hover: None,
             pending_link_open: false,
             copy_on_select,
+            blocks: blocks::Blocks::new(cx),
             last_report_point: None,
             cursor_visible: true,
             cursor_animation: Default::default(),

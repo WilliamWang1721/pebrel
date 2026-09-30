@@ -3,6 +3,7 @@
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod activity_tests;
 mod agent_activity;
+mod blocks;
 mod broadcast;
 mod completion;
 #[cfg(all(test, feature = "gpui-test-support"))]
@@ -412,6 +413,7 @@ pub struct TerminalView {
     pending_link_open: bool,
     /// 选中即复制（旧壳 `copy_on_select`）；关闭时复制交给右键路径。
     copy_on_select: bool,
+    pub(in crate::gpui_shell::terminal) blocks: blocks::Blocks,
     /// 鼠标模式下最后上报的单元格：move 事件按"进入新单元格"去重。
     last_report_point: Option<TermPoint>,
     /// GPUI 没有旧壳 scheduler 的 `BlinkCursor` 事件，视图自己只维护可见相位；
@@ -999,6 +1001,9 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.blocks.selected.is_some() && self.selection_is_empty() {
+            return self.copy_block(blocks::BlockPart::All, cx);
+        }
         let Some(session) = &self.session else { return false };
         let text = session.term.lock().selection_to_string();
         let Some(text) = text.filter(|text| !text.is_empty()) else { return false };
@@ -1123,6 +1128,10 @@ impl TerminalView {
             return;
         }
 
+        if self.block_key(ks, cx) {
+            cx.stop_propagation();
+            return;
+        }
         let mode = self.term_mode();
 
         // ---- 补全接管（对齐旧壳 keyboard.rs 的弹窗/ghost 协议）----
@@ -1179,6 +1188,18 @@ impl TerminalView {
     /// 截住组件 Root 的 Tab 焦点遍历后回灌既有终端按键路径；有补齐时只接受补齐，
     /// 否则仍由原编码器发送 Tab，避免产生第二套按键语义。
     fn dispatch_terminal_tab(&mut self, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.blocks.selected.is_some()
+            && !self
+                .term_mode()
+                .intersects(TermMode::ALT_SCREEN | TermMode::MOUSE_MODE | TermMode::VI)
+        {
+            if shift {
+                window.focus_prev(cx);
+            } else {
+                window.focus_next(cx);
+            }
+            return;
+        }
         let mut modifiers = gpui::Modifiers::default();
         modifiers.shift = shift;
         self.on_key_down(
@@ -1286,6 +1307,7 @@ impl gpui::EntityInputHandler for TerminalView {
             if !self.term_mode().contains(TermMode::ALT_SCREEN) {
                 crate::display::nebula_input_text(&mut self.suggest, text);
             }
+            self.blocks.selected = None;
             self.write_user_text(text.to_owned(), false, text.as_bytes().to_vec(), cx);
         } else if had_marked_text {
             self.restart_cursor_blink(cx);
@@ -1395,6 +1417,7 @@ impl Render for TerminalView {
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 if !*hovered {
                     this.clear_link_hover(cx);
+                    if this.blocks.hovered.take().is_some() { cx.notify(); }
                     if this.completion_viewport.hovered.take().is_some() {
                         cx.notify();
                     }
@@ -1441,6 +1464,9 @@ impl Render for TerminalView {
                         .child(exited.clone()),
                 );
             }
+        }
+        if let Some(toolbar) = self.block_toolbar(cx) {
+            root = root.child(toolbar);
         }
         root.into_any_element()
     }

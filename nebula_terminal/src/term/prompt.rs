@@ -1,8 +1,43 @@
 //! Semantic prompt marks and input boundaries owned by the terminal grid.
+mod commands;
+mod reflow;
+
+pub use commands::CommandRegion;
+use commands::CommandRegions;
+use std::collections::VecDeque;
+
 use super::{Term, TermMode};
 use crate::event::EventListener;
 use crate::grid::{Dimensions, Scroll};
 use crate::index::{Column, Line, Point};
+
+pub(super) struct ShellState {
+    marks: VecDeque<usize>,
+    active: bool,
+    input: Option<(usize, Column)>,
+    commands: Option<Box<CommandRegions>>,
+}
+
+impl ShellState {
+    pub(super) fn new(enabled: bool) -> Self {
+        Self {
+            marks: Default::default(),
+            active: false,
+            input: None,
+            commands: enabled.then(Box::default),
+        }
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.marks.clear();
+        self.input = None;
+        self.active = false;
+        if let Some(commands) = &mut self.commands {
+            commands.entries.clear();
+            commands.reported_command = None;
+        }
+    }
+}
 
 impl<T> Term<T> {
     /// The cursor row in the grid's absolute line numbering (see
@@ -27,27 +62,28 @@ impl<T> Term<T> {
 
         // A screen redraw (clear, resize) can re-emit a mark for the same or
         // an earlier row; drop those so the deque stays strictly increasing.
-        while self.nebula_prompt_marks.back().is_some_and(|&m| m >= abs) {
-            self.nebula_prompt_marks.pop_back();
+        while self.nebula_shell.marks.back().is_some_and(|&m| m >= abs) {
+            self.nebula_shell.marks.pop_back();
         }
         // Prune marks whose rows have scrolled out of history entirely.
         let floor = self.grid.scrolled_out();
-        while self.nebula_prompt_marks.front().is_some_and(|&m| m < floor) {
-            self.nebula_prompt_marks.pop_front();
+        while self.nebula_shell.marks.front().is_some_and(|&m| m < floor) {
+            self.nebula_shell.marks.pop_front();
         }
 
-        self.nebula_prompt_marks.push_back(abs);
-        self.nebula_prompt_active = true;
-        self.nebula_prompt_input = None;
+        self.nebula_shell.marks.push_back(abs);
+        self.nebula_shell.active = true;
+        self.nebula_shell.input = None;
+        self.record_command_prompt(abs);
     }
 
     pub fn nebula_end_prompt(&mut self) {
-        self.nebula_prompt_active = false;
-        self.nebula_prompt_input = None;
+        self.nebula_shell.active = false;
+        self.nebula_shell.input = None;
     }
 
     pub fn nebula_prompt_active(&self) -> bool {
-        self.nebula_prompt_active && !self.mode.contains(TermMode::ALT_SCREEN)
+        self.nebula_shell.active && !self.mode.contains(TermMode::ALT_SCREEN)
     }
 
     /// Capture OSC 133;B between parser slices, before input is echoed.
@@ -59,7 +95,7 @@ impl<T> Term<T> {
                 line += 1;
                 column = Column(0);
             }
-            self.nebula_prompt_input = Some((line, column));
+            self.nebula_shell.input = Some((line, column));
         }
     }
 
@@ -69,7 +105,7 @@ impl<T> Term<T> {
         if !self.nebula_prompt_active() {
             return None;
         }
-        let (line, column) = self.nebula_prompt_input?;
+        let (line, column) = self.nebula_shell.input?;
         if line < self.grid.scrolled_out() || column.0 >= self.columns() {
             return None;
         }
@@ -96,7 +132,7 @@ impl<T> Term<T> {
     where
         T: EventListener,
     {
-        if self.mode.contains(TermMode::ALT_SCREEN) || self.nebula_prompt_marks.is_empty() {
+        if self.mode.contains(TermMode::ALT_SCREEN) || self.nebula_shell.marks.is_empty() {
             return false;
         }
 
@@ -106,9 +142,9 @@ impl<T> Term<T> {
         let top_abs = scrolled_out + history - self.grid.display_offset();
 
         let target = if up {
-            self.nebula_prompt_marks.iter().rev().find(|&&m| m < top_abs)
+            self.nebula_shell.marks.iter().rev().find(|&&m| m < top_abs)
         } else {
-            self.nebula_prompt_marks.iter().find(|&&m| m > top_abs)
+            self.nebula_shell.marks.iter().find(|&&m| m > top_abs)
         };
         let Some(&mark) = target else { return false };
 
@@ -124,3 +160,6 @@ impl<T> Term<T> {
         true
     }
 }
+
+#[cfg(test)]
+mod tests;

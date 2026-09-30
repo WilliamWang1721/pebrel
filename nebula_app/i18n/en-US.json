@@ -215,6 +215,11 @@
       "needs_repair": "Hook installed · needs repair",
       "initialize": "Run this agent once to create its configuration, then refresh.",
       "config_path": "Configuration: {path}"
+    },
+    "blocks": {
+      "experimental": "Experimental terminal features",
+      "title": "Command blocks",
+      "description": "For new integrated local Bash, Zsh and PowerShell sessions. Show the directory above the command, select blocks, copy and re-input. Ctrl+Shift+Up/Down selects blocks; Escape returns to typing."
     }
   },
   "provider": {
@@ -1250,5 +1255,15 @@
     "relay_imported": "Connection details imported. Check and save to apply them.",
     "relay_invalid": "Invalid configuration. Import connection details exported by pebrel-relay, or complete the address, room, tokens and fingerprint.",
     "relay_read_failed": "Reading did not complete. Check the SSH connection and that pebrel-relay is installed."
+  },
+  "terminal": {
+    "blocks": {
+      "copy_command": "Copy command",
+      "copy_output": "Copy output",
+      "copy_block": "Copy block",
+      "copied": "Copied",
+      "reinput": "Re-input command",
+      "reinput_description": "Insert into an empty prompt without submitting. Multiline commands require bracketed paste."
+    }
   }
 }

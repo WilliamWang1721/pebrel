@@ -156,6 +156,7 @@ impl UiConfig {
             kitty_keyboard: true,
             suppress_bringup_da1,
             conpty_resize,
+            command_regions: false,
         }
     }
 

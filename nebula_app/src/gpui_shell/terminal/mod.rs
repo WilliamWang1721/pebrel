@@ -5,6 +5,7 @@
 
 mod answer_reader;
 pub mod colors;
+mod command_blocks;
 mod completion_viewport;
 pub(super) mod confirmation;
 mod cursor_motion;

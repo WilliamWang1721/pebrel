@@ -215,6 +215,11 @@
       "needs_repair": "Hook 已安装 · 需修复",
       "initialize": "请先运行一次此工具以创建配置，然后刷新。",
       "config_path": "配置：{path}"
+    },
+    "blocks": {
+      "experimental": "终端实验功能",
+      "title": "块状终端",
+      "description": "对新建且启用集成的本地 Bash、Zsh 和 PowerShell 会话生效。目录显示在命令上方，可选中、复制和重新输入整块命令。Ctrl+Shift+↑/↓ 选择块，Escape 返回输入。"
     }
   },
   "provider": {
@@ -1250,5 +1255,15 @@
     "relay_imported": "已导入连接信息。检查并保存后生效。",
     "relay_invalid": "配置格式有误。请导入 pebrel-relay 导出的连接信息，或补全地址、房间号、令牌和指纹。",
     "relay_read_failed": "读取未完成。请检查 SSH 主机连接，以及服务器是否已安装 pebrel-relay。"
+  },
+  "terminal": {
+    "blocks": {
+      "copy_command": "复制命令",
+      "copy_output": "复制输出",
+      "copy_block": "复制整块",
+      "copied": "已复制",
+      "reinput": "重新输入命令",
+      "reinput_description": "回填到空提示符，不代按 Enter。多行命令需要 shell 支持括号粘贴。"
+    }
   }
 }
