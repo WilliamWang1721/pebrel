@@ -1,0 +1,174 @@
+"""Isolated native acceptance checks; never included in a product PR."""
+import json
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import subprocess
+import sys
+import time
+
+scenario, binary, source, output = sys.argv[1:]
+output = Path(output).resolve()
+output.mkdir(parents=True, exist_ok=True)
+results = []
+processes = []
+
+
+def run(args, **kwargs):
+    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=40, **kwargs).stdout
+
+
+def apple(body, pid=None):
+    if pid is not None:
+        body = f'tell application "System Events"\nset p to first application process whose unix id is {pid}\n' + body + '\nend tell'
+    return run(['osascript', '-e', body])
+
+
+def shot(name):
+    run(['screencapture', '-x', str(output / (name + '.png'))])
+
+
+def wait_for(check, label, seconds=30):
+    deadline = time.monotonic() + seconds
+    last = None
+    while time.monotonic() < deadline:
+        try:
+            value = check()
+            if value:
+                results.append(label)
+                return value
+        except (subprocess.SubprocessError, OSError, ValueError, AssertionError) as error:
+            last = str(error)
+        time.sleep(.5)
+    raise AssertionError(f'{label}: {last}')
+
+
+def bundle(folder):
+    app = output / folder / 'Pebrel.app'
+    executable = app / 'Contents/MacOS/pebrel'
+    executable.parent.mkdir(parents=True)
+    shutil.copy2(binary, executable)
+    plist = plistlib.loads((Path(source) / 'packaging/macos/Info.plist').read_bytes())
+    plist.update(CFBundleName='Pebrel', CFBundleDisplayName='Pebrel', CFBundleIdentifier='io.github.kuddev.pebrel', CFBundleShortVersionString='1.9.1')
+    (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(plist))
+    run(['codesign', '--force', '--deep', '--sign', '-', str(app)])
+    return executable
+
+
+def start(executable, name, configured=True, args=()):
+    env = dict(os.environ)
+    for key in ['PEBREL_CONFIG_DIR', 'NEBULA_CONFIG_DIR', 'PEBREL_CONFIG_FILE', 'NEBULA_CONFIG_FILE', 'PEBREL_GPUI_CONFIG', 'NEBULA_GPUI_CONFIG']:
+        env.pop(key, None)
+    if configured:
+        config = output / (name + '-config')
+        config.mkdir()
+        (config / 'pebrel_settings.txt').write_text('language=en-US\ntheme=Nord\nopacity=1\nblur=off\nrestore_session=false\nresume_ai=false\nauto_check_updates=off\nkeep_session=false\n')
+        env['PEBREL_CONFIG_DIR'] = str(config)
+    log = (output / (name + '.log')).open('w')
+    p = subprocess.Popen([str(executable), '-vv', *args], env=env, stdout=log, stderr=subprocess.STDOUT)
+    processes.append((p, log))
+    return p, env
+
+
+def key(pid, key, modifiers='command down'):
+    apple(f'set frontmost of p to true\ndelay 0.2\nkeystroke {json.dumps(key)} using {{{modifiers}}}', pid)
+    time.sleep(.8)
+
+
+def snapshot(executable, env):
+    response = json.loads(run([str(executable), 'ctl', 'snapshot', '--timeout-ms', '3000'], env=env))
+    assert response.get('ok', False), response
+    return response['result']
+
+
+def choose(pid, button):
+    wait_for(lambda: apple(f'get name of every button of window 1 of p', pid), 'startup dialog has native buttons')
+    apple(f'click button {json.dumps(button)} of window 1 of p', pid)
+
+
+try:
+    if scenario == 'menu':
+        executable = bundle('menu')
+        p, env = start(executable, 'menu')
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'one initial window')
+        names = apple('get name of every menu bar item of menu bar 1 of p', p.pid)
+        (output / 'menu-names.txt').write_text(names)
+        for name in ['Pebrel', 'File', 'Edit', 'View', 'Window']:
+            assert name in names, names
+        apple('set frontmost of p to true\nclick menu bar item "File" of menu bar 1 of p', p.pid)
+        shot('01-file-menu')
+        apple('click menu item "New tab" of menu 1 of menu bar item "File" of menu bar 1 of p', p.pid)
+        wait_for(lambda: len(snapshot(executable, env)['windows'][0]['tabs']) == 2, 'native New tab creates a tab')
+        key(p.pid, 'w', 'command down, shift down')
+        wait_for(lambda: len(snapshot(executable, env)['windows'][0]['tabs']) == 1, 'command-shift-W closes only a tab')
+        key(p.pid, 'n')
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 2, 'command-N creates a window')
+        key(p.pid, 'w')
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'command-W closes only a window')
+        apple('set frontmost of p to true\nclick menu item "About Pebrel" of menu 1 of menu bar item "Pebrel" of menu bar 1 of p', p.pid)
+        shot('02-about-home')
+        key(p.pid, 'q')
+        wait_for(lambda: p.poll() is not None, 'command-Q completes graceful application exit', 45)
+        assert p.returncode == 0
+    elif scenario == 'portable':
+        executable = bundle('quit-choice')
+        p, env = start(executable, 'quit-choice', False)
+        shot('01-startup-dialog')
+        choose(p.pid, 'Quit')
+        wait_for(lambda: p.poll() is not None, 'Quit choice exits before runtime')
+        assert p.returncode == 0
+        assert not (executable.parents[2].parent / 'Pebrel Data').exists()
+        executable = bundle('portable')
+        p, env = start(executable, 'portable', False)
+        choose(p.pid, 'Use portable mode')
+        data = executable.parents[2].parent / 'Pebrel Data'
+        wait_for(lambda: (data / '.pebrel-portable').is_file(), 'portable choice creates adjacent marker')
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'portable runtime accepts matching CLI')
+        shot('02-portable-running')
+        (data / 'acceptance-sentinel.txt').write_text('retained after move')
+        key(p.pid, 'q')
+        wait_for(lambda: p.poll() is not None, 'portable graceful exit')
+        assert p.returncode == 0
+        moved = output / 'moved'
+        shutil.move(str(output / 'portable'), moved)
+        executable = moved / 'Pebrel.app/Contents/MacOS/pebrel'
+        p, env = start(executable, 'moved', False)
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'moved portable app starts without prompt')
+        assert (moved / 'Pebrel Data/acceptance-sentinel.txt').read_text() == 'retained after move'
+        key(p.pid, 'q')
+        wait_for(lambda: p.poll() is not None, 'moved app graceful exit')
+        executable = bundle('normal')
+        p, env = start(executable, 'normal', False)
+        choose(p.pid, 'Use normal mode')
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'normal choice starts installed storage')
+        assert not (output / 'normal/Pebrel Data').exists()
+        key(p.pid, 'q')
+        wait_for(lambda: p.poll() is not None, 'normal app graceful exit')
+    elif scenario == 'notification':
+        executable = bundle('notification')
+        notice = 'Pebrel foreground acceptance 20260930'
+        p, env = start(executable, 'notification', args=['-e', '/bin/zsh', '-l', '-c', f'sleep 12; printf "\\033]9;{notice}\\007"; sleep 45'])
+        wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'notification source window exists')
+        apple('set frontmost of p to true', p.pid)
+        wait_for(lambda: 'system toast source' in (output / 'notification.log').read_text(), 'foreground OSC 9 reaches system delivery', 35)
+        shot('01-foreground-notification')
+        labels = apple('tell application "System Events"\nset labels to {}\nrepeat with e in (entire contents of application process "NotificationCenter")\ntry\nset end of labels to value of e as text\nend try\nend repeat\nreturn labels as text\nend tell')
+        (output / 'notification-center.txt').write_text(labels)
+        assert notice in labels, 'Notification Center did not expose the delivered banner'
+        assert 'toast failed' not in (output / 'notification.log').read_text()
+        results.append('Notification Center exposes the foreground notice')
+    else:
+        raise ValueError(scenario)
+finally:
+    shot('99-final')
+    (output / 'acceptance.json').write_text(json.dumps({'scenario': scenario, 'checks': results}, indent=2))
+    for p, log in processes:
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait()
+        log.close()
