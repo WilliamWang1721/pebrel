@@ -99,7 +99,9 @@ int main(int argc, const char **argv) {
     run(['codesign', '--force', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(executable)])
     run(['codesign', '--force', '--deep', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(app)])
     if not request:
-        return int(run([str(executable)]).strip().split(',')[0])
+        values = [int(v) for v in run([str(executable)]).strip().split(',')]
+        permission_diagnostics['permission_probe_has_expected_bundle_identifier'] = bool(values[4])
+        return values[0]
     proc = subprocess.Popen([str(executable), 'request'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline = time.monotonic() + 25
@@ -168,8 +170,9 @@ def enable_test_notification_permission(executable):
             permission_diagnostics['permission_request_helper_failed'] = True
         except (ValueError, OSError):
             permission_diagnostics['permission_request_invalid_result'] = True
-        return
-    if permission_diagnostics['initial_notification_authorization_status'] != 1:
+    current_status = notification_authorization_status()
+    permission_diagnostics['notification_authorization_status_after_request'] = current_status
+    if current_status != 1:
         return
     run(['open', 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=io.github.kuddev.pebrel'])
     def allow():

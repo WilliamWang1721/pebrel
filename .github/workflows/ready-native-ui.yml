@@ -15,12 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - pr: 128
-            scenario: portable
-            sha: c99efb4f8a009e7c6e36d7d3b2cc6eee44cfd38c
-          - pr: 288
-            scenario: menu
-            sha: 571e0a388558d294439c1788b1200c59aef19e71
           - pr: 289
             scenario: notification
             sha: 96ed7d3b18f6aff0c27baed22c6d9330638ccb7f
