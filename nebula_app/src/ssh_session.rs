@@ -1413,7 +1413,7 @@ async fn proxy_test_stream(
                 _jump_sessions: sessions,
             }))
         },
-        None => tokio::net::TcpStream::connect((&target.host, target.port))
+        None => tokio::net::TcpStream::connect((target.host.as_str(), target.port))
             .await
             .map(|stream| Box::new(stream) as Box<dyn NetworkTestStream>)
             .map_err(|error| ProxyTestFailure::Direct(error.to_string())),

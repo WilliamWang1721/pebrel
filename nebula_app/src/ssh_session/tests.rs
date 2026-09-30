@@ -29,7 +29,7 @@ fn custom_network_test_uses_selected_node_and_reports_http_failures() {
         }
         let requests = server.finish();
         assert!(requests[0].1.starts_with("GET /health?probe=1 HTTP/1.1"));
-        assert!(requests[0].1.contains(&format!("Host: {}\r\n", server.address)));
+        assert!(requests[0].1.contains(&format!("Host: {}\r\n", target.uri.authority().unwrap())));
     }
 }
 

@@ -254,7 +254,7 @@ impl SettingsPane {
         }
     }
 
-    fn try_persist(
+    pub(super) fn try_persist(
         &mut self,
         updates: &[(&str, String)],
         cx: &mut Context<Self>,
