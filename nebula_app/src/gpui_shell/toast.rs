@@ -187,7 +187,35 @@ pub fn toast(window: &mut Window, cx: &mut App, kind: ToastKind, text: impl Into
         return;
     }
     log::info!("toast [{kind:?}]: {text}");
+    if application_delivery(crate::brand::NAME, &text, window, cx) {
+        push_notification(window, cx, note(kind, text), Some(TOAST_TTL));
+    }
+}
+
+/// Settings save errors stay visible even if the requested channel is muted.
+pub(crate) fn feedback(
+    window: &mut Window,
+    cx: &mut App,
+    kind: ToastKind,
+    text: impl Into<String>,
+) {
+    let text = text.into();
+    log::warn!("feedback [{kind:?}]: {text}");
     push_notification(window, cx, note(kind, text), Some(TOAST_TTL));
+}
+
+/// Adapt application messages (including update notices) to the shared policy.
+pub(crate) fn application_delivery(title: &str, body: &str, window: &Window, cx: &App) -> bool {
+    let routing = cx
+        .try_global::<super::config::Settings>()
+        .map(|settings| settings.notification_routing)
+        .unwrap_or_default();
+    let delivery = routing
+        .delivery(nebula_settings::NotificationCategory::Application, window.is_window_active());
+    if delivery.system {
+        crate::notify::toast(title, &crate::notify::clamp_toast_body(body));
+    }
+    delivery.in_app
 }
 
 /// 驻留一条消息（消息栏层）：默认停留远长于 toast，但**有上限**，见
@@ -202,7 +230,9 @@ pub fn banner(window: &mut Window, cx: &mut App, kind: ToastKind, text: impl Int
         return;
     }
     log::warn!("banner [{kind:?}]: {text}");
-    push_banner(window, cx, note(kind, text).on_click(|_, _, _| {}), false);
+    if application_delivery(crate::brand::NAME, &text, window, cx) {
+        push_banner(window, cx, note(kind, text).on_click(|_, _, _| {}), false);
+    }
 }
 
 pub(crate) fn banner_for_pane(

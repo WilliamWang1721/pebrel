@@ -31,6 +31,24 @@ pub(super) fn localized_select_labels(
             language.text(crate::i18n::Message::SettingsQuickTerminalDedicated),
             language.text(crate::i18n::Message::SettingsQuickTerminalExisting),
         ],
+        key if key == "notification_mode"
+            || key.starts_with("notification_") && key != "notification_duration" =>
+        {
+            use crate::i18n::Message;
+            values
+                .iter()
+                .map(|value| {
+                    language.text(match *value {
+                        "in_app" => Message::SettingsNotificationsInApp,
+                        "system" => Message::SettingsNotificationsSystem,
+                        "mixed" => Message::SettingsNotificationsMixed,
+                        "custom" => Message::SettingsNotificationsCustom,
+                        "off" => Message::SettingsNotificationsOff,
+                        _ => Message::SettingsNotificationsAutomatic,
+                    })
+                })
+                .collect()
+        },
         "notification_duration" => vec![
             language.text(crate::i18n::Message::SettingsNotificationsDurationDefault),
             language.text(crate::i18n::Message::SettingsNotificationsDurationFive),

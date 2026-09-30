@@ -36,8 +36,8 @@ impl SettingsPane {
                                 this.set_cursor_motion(value, window, cx);
                                 return;
                             }
-                            if key == "notification_duration" {
-                                this.set_notification_duration(value, window, cx);
+                            if key.starts_with("notification_") || key == "bell" {
+                                this.set_notification_setting(key, value, window, cx);
                                 return;
                             }
                             if key == "scrollback_lines" {
@@ -89,6 +89,24 @@ impl SettingsPane {
             window,
             cx,
         );
+        add_select(
+            "notification_mode",
+            nebula_settings::NotificationMode::VALUES,
+            runtime.notification_routing.mode.settings_value(),
+            window,
+            cx,
+        );
+        for category in nebula_settings::NotificationCategory::ALL {
+            for (index, key) in category.rule_keys().into_iter().enumerate() {
+                add_select(
+                    key,
+                    nebula_settings::NotificationChannel::VALUES,
+                    runtime.notification_routing.rule(category, index == 0).settings_value(),
+                    window,
+                    cx,
+                );
+            }
+        }
         // 选项顺序与文案照抄旧壳 `CURSOR_SHAPE_OPTIONS` / `cursor_shape_label`。
         add_select(
             "cursor_shape",

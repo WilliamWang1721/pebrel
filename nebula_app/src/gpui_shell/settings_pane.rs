@@ -387,7 +387,7 @@ impl SettingsPane {
         ) {
             if let Err(error) = self.try_persist(&[(key, (value as u8).to_string())], cx) {
                 let language = crate::gpui_shell::config::ui_language(cx);
-                super::toast::toast(
+                super::toast::feedback(
                     window,
                     cx,
                     super::toast::ToastKind::Warning,
@@ -787,7 +787,11 @@ impl SettingsPane {
                     != effective_cursor_blink(def.cursor_blink),
                 String::new(),
             )),
-            _ => None,
+            _ => cur.notification_routing.setting_value(key).and_then(|value| {
+                def.notification_routing
+                    .setting_value(key)
+                    .map(|factory| (value != factory, factory.to_owned()))
+            }),
         }
     }
 
@@ -830,6 +834,10 @@ impl SettingsPane {
                     move |this, window, cx| {
                         if key == "scrollback_lines" {
                             this.commit_scrollback_lines(&factory, window, cx);
+                            return;
+                        }
+                        if key.starts_with("notification_") || key == "bell" {
+                            this.set_notification_setting(key, &factory, window, cx);
                             return;
                         }
                         this.persist(&[(key, factory.clone())], cx);
@@ -1111,27 +1119,6 @@ impl SettingsPane {
                     ))
                 },
             );
-        let alerts = self
-            .group(language.pick("提醒", "Alerts"), cx)
-            .child(self.switch_row(
-                "ai_toasts",
-                language.text(crate::i18n::Message::SettingsNotificationsAiMessages),
-                help("ai_toasts", language),
-                self.runtime.ai_toasts,
-                cx,
-            ))
-            .child(self.select_row(
-                "notification_duration",
-                language.text(crate::i18n::Message::SettingsNotificationsDuration),
-                help("notification_duration", language),
-                cx,
-            ))
-            .child(self.select_row(
-                "bell",
-                language.pick("终端铃声", "Terminal bell"),
-                help("bell", language),
-                cx,
-            ));
         let completion = self
             .group(language.pick("补全", "Completion"), cx)
             .child(self.switch_row(
@@ -1147,7 +1134,7 @@ impl SettingsPane {
                 help("completion_style", language),
                 cx,
             ));
-        v_flex().w_full().gap(px(GROUP_GAP)).child(terminal).child(completion).child(alerts)
+        v_flex().w_full().gap(px(GROUP_GAP)).child(terminal).child(completion)
     }
 
     fn section_interaction(&mut self, cx: &mut Context<Self>) -> gpui::Div {
@@ -1323,6 +1310,7 @@ impl SettingsPane {
             8 => self.section_advanced(cx),
             10 => self.section_agents(cx),
             MOBILE_SECTION => self.section_mobile(window, cx),
+            NOTIFICATIONS_SECTION => self.section_notifications(cx),
             _ => self.section_backup(window, cx),
         }
         .into_any_element()

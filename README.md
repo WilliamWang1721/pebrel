@@ -194,7 +194,18 @@ The generated Lua configuration uses `require 'pebrel'` and
 `pebrel.config_builder()`. Invalid reloads retain the last valid configuration.
 See the [Lua configuration guide](docs/lua-configuration.md) for settings and examples.
 
-In **Settings → Terminal → Alerts**, **Notification duration** selects **Use defaults**,
+**Settings → Notification tools** groups notification channels, AI in-app visibility,
+display duration and terminal bell settings. Choose in-app only, system only, both,
+or custom foreground/background channels for task completion, failures, confirmation
+requests, terminal messages and application messages (including updates). Automatic
+preserves the existing routing. Changes apply to new notifications immediately;
+custom Off rules never answer requests or alter task state. System delivery requires
+OS permission and a registered app bundle on macOS, and is subject to Do Not Disturb.
+The test button follows the application-message rule. Save errors remain visible
+inside Settings. Existing cards keep their display lifetime; the AI visibility
+switch still dismisses existing AI cards.
+
+In **Settings → Notification tools**, **Notification duration** selects **Use defaults**,
 5, 10, 30, or 90 seconds, or **Until dismissed**. The default preserves existing
 lifetimes: short toasts last 5 seconds, message banners 90 seconds, and update
 notices remain until dismissed. The saved preference applies to all newly shown

@@ -10,22 +10,17 @@ fn source_is_visible(window_active: bool, source_active: bool, overlay_open: boo
     window_active && source_active && !overlay_open
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct DeliveryChannels {
-    in_app: bool,
-    system: bool,
-}
+type DeliveryChannels = nebula_settings::NotificationDelivery;
 
 fn delivery_channels(
     notification: &Notification,
     visible: bool,
     ai_toasts: bool,
+    routing: nebula_settings::NotificationRouting,
 ) -> DeliveryChannels {
-    DeliveryChannels {
-        in_app: (!visible || notification.is_attention()) && (ai_toasts || !notification.is_ai()),
-        // Keep native notification routing independent of the in-app preference.
-        system: !visible,
-    }
+    let mut delivery = routing.delivery(notification.category(), visible);
+    delivery.in_app &= ai_toasts || !notification.is_ai();
+    delivery
 }
 
 impl NebulaWorkspace {
@@ -101,6 +96,7 @@ impl NebulaWorkspace {
             &notification,
             visible,
             crate::gpui_shell::config::ai_toasts_enabled(cx),
+            cx.global::<crate::gpui_shell::config::Settings>().notification_routing,
         );
         let source_view =
             panes.iter().find(|pane| pane.id == pane_id).map(|pane| pane.view.clone());
@@ -181,19 +177,19 @@ mod tests {
             let notification =
                 Notification::AiTurn { program: "codex".into(), message: None, attention };
             assert_eq!(
-                delivery_channels(&notification, false, false),
+                delivery_channels(&notification, false, false, Default::default()),
                 DeliveryChannels { in_app: false, system: true }
             );
             assert_eq!(
-                delivery_channels(&notification, false, true),
+                delivery_channels(&notification, false, true, Default::default()),
                 DeliveryChannels { in_app: true, system: true }
             );
             assert_eq!(
-                delivery_channels(&notification, true, false),
+                delivery_channels(&notification, true, false, Default::default()),
                 DeliveryChannels { in_app: false, system: false }
             );
             assert_eq!(
-                delivery_channels(&notification, true, true),
+                delivery_channels(&notification, true, true, Default::default()),
                 DeliveryChannels { in_app: attention, system: false }
             );
         }
@@ -210,7 +206,7 @@ mod tests {
             },
         ] {
             assert_eq!(
-                delivery_channels(&notification, false, false),
+                delivery_channels(&notification, false, false, Default::default()),
                 DeliveryChannels { in_app: false, system: true }
             );
         }
@@ -224,11 +220,53 @@ mod tests {
         ] {
             for visible in [false, true] {
                 assert_eq!(
-                    delivery_channels(&notification, visible, false),
-                    delivery_channels(&notification, visible, true)
+                    delivery_channels(&notification, visible, false, Default::default()),
+                    delivery_channels(&notification, visible, true, Default::default())
                 );
             }
         }
+    }
+
+    #[test]
+    fn explicit_modes_route_foreground_completion_without_silencing_native_ai_notices() {
+        use nebula_settings::{NotificationRouting, RawSettings};
+        let notification =
+            Notification::AiTurn { program: "codex".into(), message: None, attention: false };
+        for visible in [true, false] {
+            let system =
+                NotificationRouting::from_raw(&RawSettings::from_text("notification_mode=system"));
+            assert_eq!(
+                delivery_channels(&notification, visible, false, system),
+                DeliveryChannels { in_app: false, system: true }
+            );
+            let mixed =
+                NotificationRouting::from_raw(&RawSettings::from_text("notification_mode=mixed"));
+            assert_eq!(
+                delivery_channels(&notification, visible, true, mixed),
+                DeliveryChannels { in_app: true, system: true }
+            );
+            assert_eq!(
+                delivery_channels(&notification, visible, false, mixed),
+                DeliveryChannels { in_app: false, system: true }
+            );
+        }
+        let routing = NotificationRouting::from_raw(&RawSettings::from_text(
+            "notification_mode=custom\nnotification_completion_foreground=off\nnotification_completion_background=system",
+        ));
+        assert_eq!(
+            delivery_channels(&notification, true, true, routing),
+            DeliveryChannels::default()
+        );
+        assert_eq!(
+            delivery_channels(&notification, false, true, routing),
+            DeliveryChannels { in_app: false, system: true }
+        );
+        let attention =
+            Notification::AiTurn { program: "codex".into(), message: None, attention: true };
+        assert_eq!(
+            delivery_channels(&attention, true, true, routing),
+            DeliveryChannels { in_app: true, system: false }
+        );
     }
 
     #[test]

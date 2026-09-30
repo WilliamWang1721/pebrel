@@ -184,6 +184,19 @@ impl Notification {
         Some(Self::AiTurn { program: event.source.clone(), message, attention })
     }
 
+    pub(crate) fn category(&self) -> nebula_settings::NotificationCategory {
+        use nebula_settings::NotificationCategory;
+        if self.is_attention() {
+            NotificationCategory::Attention
+        } else if self.is_failure() || matches!(self, Self::AiTurnIssue { .. }) {
+            NotificationCategory::Failure
+        } else if matches!(self, Self::CommandDone { .. } | Self::AiTurn { .. }) {
+            NotificationCategory::Completion
+        } else {
+            NotificationCategory::Terminal
+        }
+    }
+
     pub(crate) fn is_failure(&self) -> bool {
         matches!(
             self,
@@ -530,6 +543,30 @@ mod delivery_tests {
         });
         let envelope = format!("nebula-hook/1 source=pi pane=12\n{payload}");
         crate::ai_hook::parse_remote_envelope(envelope.as_bytes(), Some(12)).unwrap()
+    }
+
+    #[test]
+    fn notification_rules_classify_typed_events_without_reading_message_keywords() {
+        use nebula_settings::NotificationCategory;
+        let completion = Notification::AiTurn {
+            program: "codex".into(),
+            message: Some("permission error".into()),
+            attention: false,
+        };
+        assert_eq!(completion.category(), NotificationCategory::Completion);
+        let attention =
+            Notification::AiTurn { program: "codex".into(), message: None, attention: true };
+        assert_eq!(attention.category(), NotificationCategory::Attention);
+        let failed = Notification::CommandFailed {
+            duration: Duration::from_secs(1),
+            program: None,
+            exit_code: 1,
+        };
+        assert_eq!(failed.category(), NotificationCategory::Failure);
+        let text = Notification::Text { body: "permission error".into(), program: None };
+        assert_eq!(text.category(), NotificationCategory::Terminal);
+        let bell = Notification::Bell { program: Some("codex".into()) };
+        assert_eq!(bell.category(), NotificationCategory::Terminal);
     }
 
     #[test]

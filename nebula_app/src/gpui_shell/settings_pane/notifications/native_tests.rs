@@ -45,7 +45,7 @@ fn native_notification_duration_menu_keeps_all_choices_visible() {
                     },
                     |window, cx| {
                         let view = cx.new(|cx| SettingsPane::new(window, cx));
-                        view.update(cx, |pane, _| pane.active_section = 2);
+                        view.update(cx, |pane, _| pane.active_section = NOTIFICATIONS_SECTION);
                         pane = Some(view.clone());
                         cx.new(|cx| gpui_component::Root::new(view, window, cx))
                     },

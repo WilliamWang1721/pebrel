@@ -46,6 +46,17 @@ const RESET_KEYS: &[&str] = &[
     "bell",
     "ai_toasts",
     "notification_duration",
+    "notification_mode",
+    "notification_completion_foreground",
+    "notification_completion_background",
+    "notification_failure_foreground",
+    "notification_failure_background",
+    "notification_attention_foreground",
+    "notification_attention_background",
+    "notification_terminal_foreground",
+    "notification_terminal_background",
+    "notification_application_foreground",
+    "notification_application_background",
     "fetch",
     "auto_check_updates",
     "auto_download_updates",
@@ -178,6 +189,22 @@ mod tests {
         let restored = default_settings_text(original);
         assert_eq!(restored, "custom_data=keep\n");
         assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&restored)).ctrl_wheel_font_zoom);
+    }
+
+    #[test]
+    fn resetting_notifications_removes_all_custom_rules_and_preserves_unknown_data() {
+        let mut text = "notification_mode=custom\nunknown=keep\n".to_owned();
+        for category in crate::NotificationCategory::ALL {
+            for key in category.rule_keys() {
+                text.push_str(&format!("{key}=system\n"));
+            }
+        }
+        let restored = default_settings_text(&text);
+        assert_eq!(restored, "unknown=keep\n");
+        assert_eq!(
+            RuntimeSettings::from_raw(&RawSettings::from_text(&restored)).notification_routing,
+            crate::NotificationRouting::default()
+        );
     }
 
     #[test]

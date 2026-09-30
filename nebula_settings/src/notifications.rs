@@ -1,6 +1,14 @@
-//! Shared in-app notification lifetime, independent of delivery and approvals.
+//! Shared notification routing and display lifetime, independent of approvals.
 
 use std::time::Duration;
+
+mod routing;
+#[cfg(test)]
+mod routing_tests;
+pub use routing::{
+    NotificationCategory, NotificationChannel, NotificationDelivery, NotificationMode,
+    NotificationRouting,
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NotificationDuration {

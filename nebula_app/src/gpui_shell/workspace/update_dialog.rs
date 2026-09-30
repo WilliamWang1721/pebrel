@@ -45,6 +45,9 @@ pub(crate) fn show_update_notification(
         .into();
     let action_label: SharedString = language.pick("查看更新", "View update").into();
     let action_result = result.clone();
+    if !crate::gpui_shell::toast::application_delivery(&title, &message, window, cx) {
+        return;
+    }
     let notification = Notification::warning(message)
         .id::<UpdateNotification>()
         .title(title)
@@ -168,6 +171,9 @@ fn show_download_outcome_notification(
             ),
             _ => return,
         };
+    if !crate::gpui_shell::toast::application_delivery(&title, &message, window, cx) {
+        return;
+    }
     let action_result = result.clone();
     let mut notification =
         if success { Notification::success(message) } else { Notification::warning(message) };

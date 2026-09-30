@@ -259,7 +259,7 @@ fn ai_toast_setting_is_searchable_and_has_a_visible_switch(cx: &mut gpui::TestAp
     cx.update(|window, cx| {
         let _ = window.draw(cx);
     });
-    assert_eq!(pane.read_with(cx, |pane, _| pane.active_section), 2);
+    assert_eq!(pane.read_with(cx, |pane, _| pane.active_section), NOTIFICATIONS_SECTION);
     let bounds = cx.debug_bounds("nebula-switch-ai_toasts").expect("AI toast switch is rendered");
     assert!(bounds.size.width > px(0.0) && bounds.size.height > px(0.0));
     assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(1600.0));
@@ -334,7 +334,7 @@ fn settings_nav_visibility_hides_providers_and_keeps_stable_routes() {
     let visibility: Vec<_> = (0..SECTION_IDS.len()).map(is_nav_section_visible).collect();
     assert_eq!(
         visibility,
-        vec![true, true, true, false, true, true, true, true, true, true, true, true]
+        vec![true, true, true, false, true, true, true, true, true, true, true, true, true]
     );
     assert_eq!(
         SECTION_IDS,
@@ -351,6 +351,7 @@ fn settings_nav_visibility_hides_providers_and_keeps_stable_routes() {
             "backup",
             "agents",
             "mobile",
+            "notifications",
         ]
     );
 }
@@ -358,7 +359,7 @@ fn settings_nav_visibility_hides_providers_and_keeps_stable_routes() {
 #[test]
 fn settings_nav_starts_with_application_then_frequent_options() {
     let visible: Vec<_> = visible_nav_sections().collect();
-    assert_eq!(visible, vec![0, 1, 2, 10, 6, 7, 4, 5, 11, 8, 9]);
+    assert_eq!(visible, vec![0, 1, 2, 10, 6, 7, 4, 5, 11, 12, 8, 9]);
     let zh_labels: Vec<_> = visible
         .iter()
         .map(|index| section_label(*index, crate::display::UiLanguage::ZhCn))
@@ -375,6 +376,7 @@ fn settings_nav_starts_with_application_then_frequent_options() {
             "SSH",
             "网络",
             "手机远程",
+            "通知工具",
             "高级",
             "备份"
         ]
@@ -395,6 +397,7 @@ fn settings_nav_starts_with_application_then_frequent_options() {
             "SSH",
             "Network",
             "Phone Remote",
+            "Notification tools",
             "Advanced",
             "Backup",
         ]

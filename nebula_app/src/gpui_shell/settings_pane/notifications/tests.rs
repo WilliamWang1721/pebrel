@@ -35,7 +35,7 @@ fn duration_control_is_searchable_keyboard_accessible_and_keeps_the_delivery_swi
     window.update(|window, cx| {
         let _ = window.draw(cx);
     });
-    assert_eq!(pane.read_with(window, |pane, _| pane.active_section), 2);
+    assert_eq!(pane.read_with(window, |pane, _| pane.active_section), NOTIFICATIONS_SECTION);
     let bounds =
         window.debug_bounds("settings-select-notification_duration").expect("duration select");
     assert_eq!(bounds.size.width, px(SETTINGS_SELECT_WIDTH));
@@ -98,7 +98,7 @@ fn choosing_a_duration_persists_it_and_a_failed_save_restores_the_visible_select
     let mut pane = None;
     let (_, window) = cx.add_window_view(|window, cx| {
         let view = cx.new(|cx| SettingsPane::new(window, cx));
-        view.update(cx, |pane, _| pane.active_section = 2);
+        view.update(cx, |pane, _| pane.active_section = NOTIFICATIONS_SECTION);
         pane = Some(view.clone());
         gpui_component::Root::new(view, window, cx)
     });
@@ -131,6 +131,24 @@ fn choosing_a_duration_persists_it_and_a_failed_save_restores_the_visible_select
         );
     });
     assert!(std::fs::read_to_string(&path).unwrap().contains("custom_data=keep"));
+
+    let bounds = window.debug_bounds("settings-select-notification_mode").unwrap();
+    window.simulate_click(bounds.center(), Modifiers::default());
+    window.run_until_parked();
+    for key in ["down", "down", "enter"] {
+        window.simulate_keystrokes(key);
+        window.run_until_parked();
+    }
+    assert_eq!(
+        RuntimeSettings::load().notification_routing.mode,
+        nebula_settings::NotificationMode::System
+    );
+    window.update(|_, cx| {
+        assert_eq!(
+            cx.global::<crate::gpui_shell::config::Settings>().notification_routing.mode,
+            nebula_settings::NotificationMode::System
+        )
+    });
 
     // A directory in place of the settings file deterministically rejects a save,
     // without changing ACLs or touching the user's real configuration.
@@ -175,4 +193,65 @@ fn choosing_a_duration_persists_it_and_a_failed_save_restores_the_visible_select
         RuntimeSettings::load().notification_duration,
         nebula_settings::NotificationDuration::Persistent
     );
+}
+
+#[gpui::test]
+fn custom_rules_render_real_localized_selects_with_keyboard_access(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
+    });
+    let mut pane = None;
+    let (_, window) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| SettingsPane::new(window, cx));
+        view.update(cx, |pane, cx| {
+            pane.runtime = RuntimeSettings::from_raw(&nebula_settings::RawSettings::from_text(
+                "notification_mode=custom",
+            ));
+            pane.active_section = NOTIFICATIONS_SECTION;
+            pane.sync_select("notification_mode", "custom", window, cx);
+        });
+        pane = Some(view.clone());
+        gpui_component::Root::new(view, window, cx)
+    });
+    let pane = pane.unwrap();
+    window.simulate_resize(gpui::size(px(1000.0), px(2300.0)));
+    window.run_until_parked();
+    window.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+    for category in nebula_settings::NotificationCategory::ALL {
+        for key in category.rule_keys() {
+            let bounds = window
+                .debug_bounds(&format!("settings-select-{key}"))
+                .expect("custom rule control");
+            assert_eq!(bounds.size.width, px(SETTINGS_SELECT_WIDTH));
+            assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(2300.0));
+            window.simulate_click(bounds.center(), Modifiers::default());
+            window.run_until_parked();
+            window.simulate_keystrokes("escape");
+            window.run_until_parked();
+            pane.read_with(window, |pane, cx| {
+                assert_eq!(
+                    pane.select_of(key).unwrap().read(cx).selected_index(cx).unwrap().row,
+                    0
+                );
+                assert_eq!(pane.setting_override(key), Some((false, "automatic".into())));
+            });
+        }
+    }
+    for language in [
+        crate::display::UiLanguage::EnUs,
+        crate::display::UiLanguage::ZhCn,
+        crate::display::UiLanguage::ZhTw,
+    ] {
+        for (key, values) in [
+            ("notification_mode", nebula_settings::NotificationMode::VALUES),
+            ("notification_attention_foreground", nebula_settings::NotificationChannel::VALUES),
+        ] {
+            let labels = localized_select_labels(key, values, language);
+            assert_eq!(labels.len(), values.len());
+            assert!(labels.iter().all(|label| !label.is_empty()));
+        }
+    }
 }
