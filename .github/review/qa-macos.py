@@ -197,6 +197,14 @@ finally:
         diagnostics['portable_endpoint'] = (root / 'runtime.port').is_file()
         diagnostics['portable_owner_lock'] = (root / 'runtime.port.lock').is_file()
         diagnostics['portable_process_panicked'] = 'panicked at' in (output / 'portable.log').read_text() if (output / 'portable.log').exists() else False
+    if scenario == 'portable' and (output / 'portable.log').exists():
+        portable_log = (output / 'portable.log').read_text()
+        diagnostics['gpui_missing_application_ivar'] = 'ivar' in portable_log and 'panicked at' in portable_log
+    if scenario == 'notification' and (output / 'notification.log').exists():
+        notification_log = (output / 'notification.log').read_text()
+        diagnostics['native_dispatch_failed'] = 'toast failed' in notification_log
+        diagnostics['native_bundle_registration_missing'] = 'require a registered' in notification_log
+        diagnostics['native_activation_failed'] = 'activation listener failed' in notification_log
     (output / 'acceptance.json').write_text(json.dumps({'scenario': scenario, 'checks': results, 'diagnostics': diagnostics}, indent=2))
     for p, log in processes:
         if p.poll() is None:
