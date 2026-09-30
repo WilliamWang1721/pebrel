@@ -1,0 +1,19 @@
+name: Cancel stale notification validation
+on:
+  push:
+    branches: [qa/notification-tools]
+permissions:
+  actions: write
+jobs:
+  cancel-stale:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const run_id = 36748891667;
+            const { data } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id });
+            if (data.head_branch !== 'qa/notification-tools') throw new Error('Unexpected validation branch');
+            if (data.status !== 'completed') {
+              await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id });
+            }
