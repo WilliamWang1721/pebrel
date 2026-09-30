@@ -16,7 +16,10 @@ processes = []
 
 
 def run(args, **kwargs):
-    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=40, **kwargs).stdout
+    result = subprocess.run(args, capture_output=True, text=True, timeout=40, **kwargs)
+    if result.returncode:
+        raise AssertionError(result.stderr.strip())
+    return result.stdout
 
 
 def apple(body, pid=None):
@@ -53,6 +56,7 @@ def bundle(folder):
     plist.update(CFBundleName='Pebrel', CFBundleDisplayName='Pebrel', CFBundleIdentifier='io.github.kuddev.pebrel', CFBundleShortVersionString='1.9.1')
     (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(plist))
     run(['codesign', '--force', '--deep', '--sign', '-', str(app)])
+    run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(app)])
     return executable
 
 
@@ -66,6 +70,7 @@ def start(executable, name, configured=True, args=()):
         (config / 'pebrel_settings.txt').write_text('language=en-US\ntheme=Nord\nopacity=1\nblur=off\nrestore_session=false\nresume_ai=false\nauto_check_updates=off\nkeep_session=false\n')
         env['PEBREL_CONFIG_DIR'] = str(config)
     log = (output / (name + '.log')).open('w')
+    env['PEBREL_EXTRA_LOG_TARGETS'] = 'pebrel'
     p = subprocess.Popen([str(executable), '-vv', *args], env=env, stdout=log, stderr=subprocess.STDOUT)
     processes.append((p, log))
     return p, env
@@ -83,8 +88,26 @@ def snapshot(executable, env):
 
 
 def choose(pid, button):
-    wait_for(lambda: apple(f'get name of every button of window 1 of p', pid), 'startup dialog has native buttons')
-    apple(f'click button {json.dumps(button)} of window 1 of p', pid)
+    # RFD 0.17 uses CFUserNotificationDisplayAlert for parentless dialogs.
+    # macOS hosts that alert in a system UI process, rather than Pebrel's PID.
+    script = f'''tell application "System Events"
+repeat with proc in application processes
+try
+repeat with win in windows of proc
+if exists button "Use portable mode" of win then
+if exists button "Use normal mode" of win then
+if exists button "Quit" of win then
+click button {json.dumps(button)} of win
+return "clicked startup choice"
+end if
+end if
+end if
+end repeat
+end try
+end repeat
+return ""
+end tell'''
+    wait_for(lambda: apple(script), 'native startup choice: ' + button)
 
 
 try:
