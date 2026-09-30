@@ -20,8 +20,51 @@ jobs:
           mkdir -p review-tools
           cp "$(rustup which rustfmt)" review-tools/rustfmt
           ldd review-tools/rustfmt >review-tools/ldd.txt
+          toolchain_dir="$(dirname "$(dirname "$(rustup which rustfmt)")")"
+          cp "$toolchain_dir"/lib/librustc_driver*.so review-tools/
+          cp "$toolchain_dir"/lib/libLLVM*.so* review-tools/
+          tar czf formatter.tar.gz -C review-tools .
+          split -b 20M -d formatter.tar.gz formatter-part-
+          ls -lh formatter.tar.gz formatter-part-*
       - uses: actions/upload-artifact@v4
         with:
-          name: pinned-rustfmt
-          path: review-tools/
+          name: pinned-formatter-0
+          path: formatter-part-00
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-1
+          path: formatter-part-01
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-2
+          path: formatter-part-02
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-3
+          path: formatter-part-03
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-4
+          path: formatter-part-04
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-5
+          path: formatter-part-05
+          if-no-files-found: ignore
+          compression-level: 0
           retention-days: 3
