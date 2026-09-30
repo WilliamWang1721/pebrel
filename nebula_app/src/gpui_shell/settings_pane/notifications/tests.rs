@@ -223,7 +223,7 @@ fn custom_rules_render_real_localized_selects_with_keyboard_access(cx: &mut Test
     for category in nebula_settings::NotificationCategory::ALL {
         for key in category.rule_keys() {
             let bounds = window
-                .debug_bounds(&format!("settings-select-{key}"))
+                .debug_bounds(format!("settings-select-{key}").leak())
                 .expect("custom rule control");
             assert_eq!(bounds.size.width, px(SETTINGS_SELECT_WIDTH));
             assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(2300.0));
