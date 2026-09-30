@@ -22,7 +22,7 @@ jobs:
           ldd review-tools/rustfmt >review-tools/ldd.txt
           toolchain_dir="$(dirname "$(dirname "$(rustup which rustfmt)")")"
           cp "$toolchain_dir"/lib/librustc_driver*.so review-tools/
-          cp "$toolchain_dir"/lib/libLLVM*.so* review-tools/
+          cp -P "$toolchain_dir"/lib/libLLVM*.so* review-tools/
           tar czf formatter.tar.gz -C review-tools .
           split -b 20M -d formatter.tar.gz formatter-part-
           ls -lh formatter.tar.gz formatter-part-*
@@ -65,6 +65,48 @@ jobs:
         with:
           name: pinned-formatter-5
           path: formatter-part-05
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-6
+          path: formatter-part-06
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-7
+          path: formatter-part-07
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-8
+          path: formatter-part-08
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-9
+          path: formatter-part-09
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-10
+          path: formatter-part-10
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-formatter-11
+          path: formatter-part-11
           if-no-files-found: ignore
           compression-level: 0
           retention-days: 3
