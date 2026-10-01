@@ -17,7 +17,7 @@ jobs:
         include:
           - pr: 289
             scenario: notification
-            sha: 9990d8295982f4ea471f0f82d692d573b6b8dcaf
+            sha: 89fce0630ae8785b74218898d45f5215b812d04b
     runs-on: macos-26
     timeout-minutes: 100
     env:
