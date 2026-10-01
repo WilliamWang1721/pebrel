@@ -1,6 +1,6 @@
 # Pebrel open PR 合并准备报告
 
-七个 PR 已通过普通 merge commit 同步至 main `894e7540e63e29d46ecf9ff936cabea16ea99f9e`。#280、#291、#418 的最新提交已通过 10 项必需检查，其余同步后的检查仍在运行。旧提交的绿色结果不替代本轮结果。正式 CI、维护者审批及 #288 Draft 仍是合并门槛；#289 最终提交原生显示和点击验收已通过。记录时间：2026-10-01 12:42 Asia/Singapore。
+七个 PR 已通过普通 merge commit 同步至 main `894e7540e63e29d46ecf9ff936cabea16ea99f9e`。#280、#291、#294、#418 的最新提交已通过 10 项必需检查，其余同步后的检查仍在运行。旧提交的绿色结果不替代本轮结果。正式 CI、维护者审批及 #288 Draft 仍是合并门槛；#289 最终提交原生显示和点击验收已通过。记录时间：2026-10-01 12:52 Asia/Singapore。
 
 | PR | 当前提交 | 必需检查 | 正式记录 |
 | --- | --- | --- | --- |
@@ -9,7 +9,7 @@
 | [#288](https://github.com/Kuddev/pebrel/pull/288) macOS 原生菜单 | `94dfdf320af0942ed9fb9e271a05b1a0cda270f3` | 主线同步后 CI 正在运行 | 当前 head 的必需检查均来自 GitHub Actions |
 | [#289](https://github.com/Kuddev/pebrel/pull/289) macOS 前台系统通知 | `0d454f441e3b26a128076383c6513be3b94d66c6` | 主线同步后 CI 正在运行 | 当前 head 的必需检查均来自 GitHub Actions |
 | [#291](https://github.com/Kuddev/pebrel/pull/291) 用户文档站点 | `5656fab43b139077ca28cfa28fc08681a100e989` | 10/10 全部通过 | 当前 head 的必需检查均来自 GitHub Actions |
-| [#294](https://github.com/Kuddev/pebrel/pull/294) 自定义更新来源 | `2b7d5aaa187c1ab6825b865c90746fa71fbea8d6` | 主线同步后 CI 正在运行 | 当前 head 的必需检查均来自 GitHub Actions |
+| [#294](https://github.com/Kuddev/pebrel/pull/294) 自定义更新来源 | `2b7d5aaa187c1ab6825b865c90746fa71fbea8d6` | 10/10 全部通过 | 当前 head 的必需检查均来自 GitHub Actions |
 | [#418](https://github.com/Kuddev/pebrel/pull/418) 安装后更新说明 | `e763523db8ad0bbe3a6d053cd11b1e46ee682adf` | 10/10 全部通过 | 新增 PR，已纳入检查 |
 
 ## 修复与代码复查
