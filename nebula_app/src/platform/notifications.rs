@@ -33,8 +33,11 @@ pub(crate) fn dispatch(
     #[cfg(windows)]
     toast_actionable(&title, &body, activation, actions);
     #[cfg(all(target_os = "macos", feature = "gpui-shell"))]
-    macos::dispatch(title, body, activation, actions);
-    #[cfg(all(not(windows), not(all(target_os = "macos", feature = "gpui-shell"))))]
+    if macos::is_active() {
+        macos::dispatch(title, body, activation, actions);
+        return;
+    }
+    #[cfg(not(windows))]
     if let Err(error) = std::thread::Builder::new()
         .name("pebrel-toast".into())
         .spawn(move || toast_actionable(&title, &body, activation, actions))
@@ -47,20 +50,29 @@ pub(crate) fn dispatch(
 static MACOS_READY: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
 pub fn prepare() {
-    #[cfg(target_os = "macos")]
-    {
-        MACOS_READY.get_or_init(|| {
-            let Some(identifier) = objc2_foundation::NSBundle::mainBundle().bundleIdentifier()
-            else {
-                return false;
-            };
-            notify_rust::set_application(&identifier.to_string()).is_ok()
-        });
-    }
+    #[cfg(all(target_os = "macos", not(feature = "gpui-shell")))]
+    prepare_legacy();
+}
+
+#[cfg(target_os = "macos")]
+fn prepare_legacy() {
+    MACOS_READY.get_or_init(|| {
+        let Some(identifier) = objc2_foundation::NSBundle::mainBundle().bundleIdentifier() else {
+            return false;
+        };
+        notify_rust::set_application(&identifier.to_string()).is_ok()
+    });
 }
 
 #[cfg(not(windows))]
 pub fn show(title: &str, body: &str) {
+    #[cfg(all(target_os = "macos", feature = "gpui-shell"))]
+    if macos::is_active() {
+        macos::dispatch(title.to_owned(), body.to_owned(), None, Vec::new());
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    prepare_legacy();
     #[cfg(target_os = "macos")]
     if !MACOS_READY.get().copied().unwrap_or(false) {
         log::warn!("System notifications require a registered Pebrel application bundle");
@@ -97,13 +109,18 @@ pub(crate) fn toast_actionable(
     activation: Option<ToastActivation>,
     actions: Vec<ToastAction>,
 ) {
+    #[cfg(all(target_os = "macos", feature = "gpui-shell"))]
+    if macos::is_active() {
+        macos::dispatch(title.to_owned(), body.to_owned(), activation, actions);
+        return;
+    }
     #[cfg(target_os = "macos")]
     {
         if objc2_foundation::NSBundle::mainBundle().bundleIdentifier().is_none() {
             log::warn!("System notifications require a registered Pebrel application bundle");
             return;
         }
-        crate::platform::notifications::prepare();
+        prepare_legacy();
     }
     let mut notification = notify_rust::Notification::new();
     notification.appname(crate::brand::NAME).summary(title).body(body);

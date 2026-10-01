@@ -12,6 +12,8 @@ A foreground OSC 9 notice must appear through the actual macOS notification chan
 
 Native acceptance of `8193eef` reached the production dispatcher without errors. Public synthetic screenshots in fork run 36806536236 show the Notifications settings list scrolled to its end without a Pebrel entry; the authorization status remained not determined. The earlier denied status came from an invalid helper authorization request and is not product evidence.
 
+The pinned mac-notification-sys setApplication installs a process-wide NSBundle hook. GPUI mode does not initialize that legacy registration; all native entrypoints use the existing GPUI service and real bundle identity. Legacy mode retains its existing backend.
+
 The exact locked GPUI revision `fc05d637cc7029d75de051fd7f52c1a0fb8fa6b4` already implements macOS `UNUserNotificationCenter` authorization, Banner/List foreground presentation, retained delegate ownership, main-thread response callbacks, actions and dismissal in `gpui_macos::system_notifications`.
 
 ## Decision

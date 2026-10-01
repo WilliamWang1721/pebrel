@@ -11,6 +11,7 @@ use gpui::{App, SystemNotification, SystemNotificationAction};
 use super::{ToastAction, ToastActivation};
 
 const CAPACITY: usize = 64;
+static ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static SEND: OnceLock<Mutex<mpsc::Sender<Pending>>> = OnceLock::new();
 
 struct Pending {
@@ -41,7 +42,12 @@ impl Callbacks {
     }
 }
 
+pub(super) fn is_active() -> bool {
+    ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub(crate) fn init(cx: &mut App) {
+    ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
     // The pinned GPUI backend aborts if UNUserNotificationCenter is used outside a bundle.
     if objc2_foundation::NSBundle::mainBundle().bundleIdentifier().is_none() {
         return;
