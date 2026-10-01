@@ -198,7 +198,17 @@ set allElements to entire contents of win
 set isPebrel to false
 repeat with e in allElements
 try
-if name of e is "Pebrel" or value of e is "Pebrel" then set isPebrel to true
+set elementText to ""
+try
+set elementText to elementText & (name of e as text)
+end try
+try
+set elementText to elementText & (value of e as text)
+end try
+try
+set elementText to elementText & (description of e as text)
+end try
+if elementText contains "Pebrel" then set isPebrel to true
 end try
 end repeat
 if isPebrel then
@@ -217,7 +227,17 @@ set winPosition to position of win
 set winSize to size of win
 repeat with e in allElements
 try
-if name of e is "Pebrel" or value of e is "Pebrel" then
+set elementText to ""
+try
+set elementText to elementText & (name of e as text)
+end try
+try
+set elementText to elementText & (value of e as text)
+end try
+try
+set elementText to elementText & (description of e as text)
+end try
+if elementText contains "Pebrel" then
 set elementPosition to position of e
 set elementSize to size of e
 set px to item 1 of elementPosition
@@ -416,9 +436,9 @@ if exists application process processName then
 repeat with itemRef in menu bar items of menu bar 1 of application process processName
 try
 if description of itemRef contains "Clock" then
-set ip to position of itemRef
-set sz to size of itemRef
-return ((item 1 of ip) + (item 1 of sz) / 2) & "," & ((item 2 of ip) + (item 2 of sz) / 2) as text
+set clockPoint to position of itemRef
+set clockSize to size of itemRef
+return "click," & ((item 1 of clockPoint) + (item 1 of clockSize) / 2) & "," & ((item 2 of clockPoint) + (item 2 of clockSize) / 2)
 end if
 end try
 end repeat
@@ -426,7 +446,7 @@ end if
 end repeat
 error "Clock accessibility description not found"
 end tell''').strip()
-            x, y = clock_position.split(',')
+            _, x, y = clock_position.split(',')
             native_input(float(x), float(y))
             shot('02-notification-center-opened')
             labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center list exposes foreground notice', 20)
