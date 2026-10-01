@@ -12,6 +12,12 @@ pub(crate) struct ToastAction {
 #[cfg(windows)]
 mod windows;
 
+#[cfg(all(target_os = "macos", feature = "gpui-shell"))]
+mod macos;
+
+#[cfg(all(target_os = "macos", feature = "gpui-shell"))]
+pub(crate) use macos::init as init_gpui;
+
 pub(crate) fn toast_clickable(title: &str, body: &str, activation: Option<ToastActivation>) {
     toast_actionable(title, body, activation, Vec::new());
 }
@@ -26,7 +32,9 @@ pub(crate) fn dispatch(
 ) {
     #[cfg(windows)]
     toast_actionable(&title, &body, activation, actions);
-    #[cfg(not(windows))]
+    #[cfg(all(target_os = "macos", feature = "gpui-shell"))]
+    macos::dispatch(title, body, activation, actions);
+    #[cfg(all(not(windows), not(all(target_os = "macos", feature = "gpui-shell"))))]
     if let Err(error) = std::thread::Builder::new()
         .name("pebrel-toast".into())
         .spawn(move || toast_actionable(&title, &body, activation, actions))
