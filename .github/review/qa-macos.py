@@ -183,6 +183,7 @@ end tell''').strip()
 
 
 def screen_words():
+    permission_diagnostics['visual_navigation_invoked'] = True
     # The CI desktop is synthetic; OCR stays local and is never exported as a raw dump.
     helper = output.parent / 'qa-screen-words'
     if not helper.exists():
@@ -206,9 +207,13 @@ let json = try JSONSerialization.data(withJSONObject: words)
 print(String(data: json, encoding: .utf8)!)
 """)
         run(['swiftc', str(source), '-o', str(helper)])
+    permission_diagnostics['visual_navigation_helper_compiled'] = True
     screen = output.parent / 'qa-ocr-frame.png'
     run(['screencapture', '-x', str(screen)])
-    return json.loads(run([str(helper), str(screen)]))
+    words = json.loads(run([str(helper), str(screen)]))
+    permission_diagnostics['visual_navigation_word_count'] = len(words)
+    permission_diagnostics['visual_navigation_pebrel_detected'] = any('pebrel' in word['text'].lower().replace(' ', '') for word in words)
+    return words
 
 
 def enable_test_notification_permission(executable):
@@ -223,13 +228,15 @@ def enable_test_notification_permission(executable):
             return True
         bounds = [float(v) for v in apple('tell application \"System Events\" to tell application process \"System Settings\" to return (position of window 1) & (size of window 1)').strip().split(',')]
         left, top, width, height = bounds
+        permission_diagnostics['notification_settings_window_bounds'] = bounds
         words = [word for word in screen_words() if left + width * .3 < word['x'] < left + width and top + 70 < word['y'] < top + height - 30]
+        permission_diagnostics['visual_navigation_settings_word_count'] = len(words)
         toggle = next((word for word in words if word['text'].lower() == 'allow notifications'), None)
         if toggle:
             native_input(left + width - 40, toggle['y'])
             permission_diagnostics['synthetic_notification_permission_toggle_clicked'] = True
             return notification_authorization_status() in (2, 3, 4)
-        row = next((word for word in words if word['text'] == 'Pebrel'), None)
+        row = next((word for word in words if word['text'].lower().replace(' ', '') == 'pebrel'), None)
         if row:
             native_input(row['x'], row['y'])
             permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
@@ -442,6 +449,7 @@ try:
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
         permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
+        screen_words()
         notice = 'Pebrel foreground acceptance 20260930'
         p, env = start(executable, 'notification', launch_services=True, args=['-e', '/bin/zsh', '-l', '-c', f'for attempt in 1 2 3 4 5; do sleep 20; printf "\\033]9;{notice}\\007"; done; sleep 45'])
         wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'notification source window exists')
