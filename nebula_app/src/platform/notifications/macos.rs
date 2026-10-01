@@ -64,40 +64,35 @@ pub(crate) fn init(cx: &mut App) {
         while let Some(pending) = receiver.next().await {
             serial = serial.wrapping_add(1);
             let tag = format!("pebrel-notification-{serial}");
-            if cx
-                .update(|cx| {
-                    let actions = pending
-                        .actions
-                        .iter()
-                        .enumerate()
-                        .map(|(index, action)| SystemNotificationAction {
-                            id: format!("choice-{index}").into(),
-                            label: action.label.clone().into(),
-                        })
-                        .collect();
-                    {
-                        let mut callbacks = callbacks.borrow_mut();
-                        if callbacks.len() == CAPACITY {
-                            let expired = callbacks.pop_front().unwrap();
-                            cx.dismiss_system_notification(&expired.tag);
-                        }
-                        callbacks.push_back(Callbacks {
-                            tag: tag.clone(),
-                            activation: pending.activation,
-                            actions: pending.actions,
-                        });
+            cx.update(|cx| {
+                let actions = pending
+                    .actions
+                    .iter()
+                    .enumerate()
+                    .map(|(index, action)| SystemNotificationAction {
+                        id: format!("choice-{index}").into(),
+                        label: action.label.clone().into(),
+                    })
+                    .collect();
+                {
+                    let mut callbacks = callbacks.borrow_mut();
+                    if callbacks.len() == CAPACITY {
+                        let expired = callbacks.pop_front().unwrap();
+                        cx.dismiss_system_notification(&expired.tag);
                     }
-                    cx.show_system_notification(SystemNotification {
-                        tag: tag.into(),
-                        title: pending.title.into(),
-                        body: pending.body.into(),
-                        actions,
+                    callbacks.push_back(Callbacks {
+                        tag: tag.clone(),
+                        activation: pending.activation,
+                        actions: pending.actions,
                     });
-                })
-                .is_err()
-            {
-                break;
-            }
+                }
+                cx.show_system_notification(SystemNotification {
+                    tag: tag.into(),
+                    title: pending.title.into(),
+                    body: pending.body.into(),
+                    actions,
+                });
+            });
         }
     })
     .detach();
