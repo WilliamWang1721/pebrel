@@ -201,6 +201,19 @@ def screen_words():
 import Vision
 import ImageIO
 import CoreGraphics
+if CommandLine.arguments[1] == "--click" {
+    guard CGPreflightPostEventAccess() else { exit(2) }
+    let point = CGPoint(x: Double(CommandLine.arguments[2])!, y: Double(CommandLine.arguments[3])!)
+    let eventSource = CGEventSource(stateID: .combinedSessionState)
+    CGWarpMouseCursorPosition(point)
+    for type in [CGEventType.leftMouseDown, CGEventType.leftMouseUp] {
+        let event = CGEvent(mouseEventSource: eventSource, mouseType: type, mouseCursorPosition: point, mouseButton: .left)!
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.post(tap: .cgSessionEventTap)
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    exit(0)
+}
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
 let source = CGImageSourceCreateWithURL(url as CFURL, nil)!
 let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
@@ -523,7 +536,8 @@ end tell''').strip()
         shot('03-native-notification-visible')
         apple('tell application "Finder" to activate')
         wait_for(native_notice, 'native notice remains visible before activation', 25)
-        native_input(*native_notice_point)
+        run([str(output.parent / 'qa-screen-words'), '--click', *(str(value) for value in native_notice_point)])
+        permission_diagnostics['native_notice_real_session_click_posted'] = True
         wait_for(lambda: apple('return frontmost of p', app_pid).strip() == 'true', 'native notification click activates its Pebrel source window', 15)
         shot('04-native-notification-activated')
         assert 'toast failed' not in (output / 'notification.log').read_text()
