@@ -182,6 +182,35 @@ end tell''').strip()
             proc.wait()
 
 
+def screen_words():
+    # The CI desktop is synthetic; OCR stays local and is never exported as a raw dump.
+    helper = output.parent / 'qa-screen-words'
+    if not helper.exists():
+        source = output.parent / 'qa-screen-words.swift'
+        source.write_text("""import Foundation
+import Vision
+import ImageIO
+let url = URL(fileURLWithPath: CommandLine.arguments[1])
+let source = CGImageSourceCreateWithURL(url as CFURL, nil)!
+let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
+let request = VNRecognizeTextRequest()
+request.recognitionLevel = .accurate
+request.recognitionLanguages = ["en-US"]
+try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+let words: [[String: Any]] = (request.results ?? []).compactMap { item in
+    guard let candidate = item.topCandidates(1).first else { return nil }
+    let box = item.boundingBox
+    return ["text": candidate.string, "x": box.midX * Double(image.width), "y": (1 - box.midY) * Double(image.height)]
+}
+let json = try JSONSerialization.data(withJSONObject: words)
+print(String(data: json, encoding: .utf8)!)
+""")
+        run(['swiftc', str(source), '-o', str(helper)])
+    screen = output.parent / 'qa-ocr-frame.png'
+    run(['screencapture', '-x', str(screen)])
+    return json.loads(run([str(helper), str(screen)]))
+
+
 def enable_test_notification_permission(executable):
     # Configure only the registered synthetic Pebrel app, after actual delivery.
     current_status = notification_authorization_status()
@@ -190,6 +219,22 @@ def enable_test_notification_permission(executable):
         return
     run(['open', 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=io.github.kuddev.pebrel'])
     def allow():
+        if notification_authorization_status() in (2, 3, 4):
+            return True
+        bounds = [float(v) for v in apple('tell application \"System Events\" to tell application process \"System Settings\" to return (position of window 1) & (size of window 1)').strip().split(',')]
+        left, top, width, height = bounds
+        words = [word for word in screen_words() if left + width * .3 < word['x'] < left + width and top + 70 < word['y'] < top + height - 30]
+        toggle = next((word for word in words if word['text'].lower() == 'allow notifications'), None)
+        if toggle:
+            native_input(left + width - 40, toggle['y'])
+            permission_diagnostics['synthetic_notification_permission_toggle_clicked'] = True
+            return notification_authorization_status() in (2, 3, 4)
+        row = next((word for word in words if word['text'] == 'Pebrel'), None)
+        if row:
+            native_input(row['x'], row['y'])
+            permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
+            shot('00-pebrel-notification-permission-detail')
+            return False
         outcome = apple('''tell application "System Events"
 tell application process "System Settings"
 set frontmost to true
@@ -448,6 +493,8 @@ error "Clock accessibility description not found"
 end tell''').strip()
             _, x, y = clock_position.split(',')
             native_input(float(x), float(y))
+            permission_diagnostics['notification_center_click_x'] = float(x)
+            permission_diagnostics['notification_center_click_y'] = float(y)
             shot('02-notification-center-opened')
             labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center list exposes foreground notice', 20)
         (output / 'notification-center.txt').write_text(labels)
