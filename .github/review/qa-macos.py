@@ -1,5 +1,6 @@
 """Isolated native acceptance checks; never included in a product PR."""
 import json
+import ctypes
 import os
 from pathlib import Path
 import plistlib
@@ -28,6 +29,34 @@ def apple(body, pid=None):
     if pid is not None:
         body = f'tell application "System Events"\nset p to first application process whose unix id is {pid}\n' + body + '\nend tell'
     return run(['osascript', '-e', body])
+
+
+class Point(ctypes.Structure):
+    _fields_ = [('x', ctypes.c_double), ('y', ctypes.c_double)]
+
+
+def native_input(x, y, scroll=False):
+    cg = ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
+    cf = ctypes.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
+    cg.CGWarpMouseCursorPosition.argtypes = [Point]
+    cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+    cg.CGWarpMouseCursorPosition(Point(x, y))
+    if scroll:
+        cg.CGEventCreateScrollWheelEvent.restype = ctypes.c_void_p
+        cg.CGEventCreateScrollWheelEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_int32]
+        event = cg.CGEventCreateScrollWheelEvent(None, 0, 1, -350)
+        cg.CGEventPost(0, event)
+        cf.CFRelease(event)
+    else:
+        cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
+        cg.CGEventCreateMouseEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, Point, ctypes.c_uint32]
+        for event_type in (1, 2):
+            event = cg.CGEventCreateMouseEvent(None, event_type, Point(x, y), 0)
+            cg.CGEventPost(0, event)
+            cf.CFRelease(event)
+            time.sleep(.08)
+    time.sleep(.5)
 
 
 def shot(name):
@@ -194,8 +223,7 @@ set elementSize to size of e
 set px to item 1 of elementPosition
 set py to item 2 of elementPosition
 if px > (item 1 of winPosition) + (item 1 of winSize) * 0.3 and py > (item 2 of winPosition) + 70 and py < (item 2 of winPosition) + (item 2 of winSize) - 40 then
-click at {px + (item 1 of elementSize) / 2, py + (item 2 of elementSize) / 2}
-return "selected Pebrel settings"
+return "click," & (px + (item 1 of elementSize) / 2) & "," & (py + (item 2 of elementSize) / 2)
 end if
 end if
 end try
@@ -205,8 +233,8 @@ try
 if role of e is "AXScrollArea" then
 set ep to position of e
 if item 1 of ep > (item 1 of winPosition) + (item 1 of winSize) * 0.3 then
-perform action "AXScrollDownByPage" of e
-return "scrolled notification apps"
+set es to size of e
+return "scroll," & ((item 1 of ep) + (item 1 of es) / 2) & "," & ((item 2 of ep) + (item 2 of es) / 2)
 end if
 end if
 end try
@@ -214,9 +242,13 @@ end repeat
 return "waiting"
 end tell
 end tell''').strip()
-        if outcome == 'selected Pebrel settings':
+        if outcome.startswith('click,'):
+            _, x, y = outcome.split(',')
+            native_input(float(x), float(y))
             permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
-        if outcome == 'scrolled notification apps':
+        if outcome.startswith('scroll,'):
+            _, x, y = outcome.split(',')
+            native_input(float(x), float(y), scroll=True)
             permission_diagnostics['notification_app_list_scrolled'] = True
         return outcome == 'enabled Pebrel notifications'
     try:
@@ -378,21 +410,25 @@ end tell''')
             labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native notification banner exposes notice', 30)
         except AssertionError:
             # System preferences can suppress banners; inspect the actual notification list as well.
-            apple('''tell application "System Events"
+            clock_position = apple('''tell application "System Events"
 repeat with processName in {"ControlCenter", "SystemUIServer"}
 if exists application process processName then
 repeat with itemRef in menu bar items of menu bar 1 of application process processName
 try
 if description of itemRef contains "Clock" then
-click itemRef
-return "opened notification list"
+set ip to position of itemRef
+set sz to size of itemRef
+return ((item 1 of ip) + (item 1 of sz) / 2) & "," & ((item 2 of ip) + (item 2 of sz) / 2) as text
 end if
 end try
 end repeat
 end if
 end repeat
 error "Clock accessibility description not found"
-end tell''')
+end tell''').strip()
+            x, y = clock_position.split(',')
+            native_input(float(x), float(y))
+            shot('02-notification-center-opened')
             labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center list exposes foreground notice', 20)
         (output / 'notification-center.txt').write_text(labels)
         assert notice in labels, 'Notification Center did not expose the delivered banner'
