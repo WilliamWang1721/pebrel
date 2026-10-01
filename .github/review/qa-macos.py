@@ -377,16 +377,35 @@ try:
         key(p.pid, 'q')
         wait_for(lambda: p.poll() is not None, 'normal app graceful exit')
     elif scenario == 'notification':
-        service = f'gui/{os.getuid()}/com.apple.notificationcenterui'
-        observed = subprocess.run(['launchctl', 'print', service], capture_output=True, timeout=15)
-        permission_diagnostics['notification_center_launch_agent_registered'] = observed.returncode == 0
-        if observed.returncode != 0:
-            setup = subprocess.run(['launchctl', 'bootstrap', f'gui/{os.getuid()}', '/System/Library/LaunchAgents/com.apple.notificationcenterui.plist'], capture_output=True, timeout=15)
-            permission_diagnostics['notification_center_launch_agent_bootstrap_exit'] = setup.returncode
-        kick = subprocess.run(['launchctl', 'kickstart', '-k', service], capture_output=True, timeout=15)
-        permission_diagnostics['notification_center_launch_agent_kickstart_exit'] = kick.returncode
-        if kick.returncode != 0:
-            run(['open', '-a', '/System/Library/CoreServices/NotificationCenter.app'])
+        domain = f'gui/{os.getuid()}'
+        domain_check = subprocess.run(['launchctl', 'print', domain], capture_output=True, timeout=15)
+        permission_diagnostics['notification_center_gui_domain_registered'] = domain_check.returncode == 0
+        candidates = []
+        roots = [Path('/System/Library/LaunchAgents'), Path('/System/Library/CoreServices/NotificationCenter.app/Contents/Library/LaunchAgents'), Path('/System/Library/CoreServices/UserNotificationCenter.app/Contents/Library/LaunchAgents')]
+        for root in roots:
+            for path in root.glob('*.plist'):
+                if 'notification' not in path.name.lower():
+                    continue
+                info = plistlib.loads(path.read_bytes())
+                label = info.get('Label', '')
+                if label.startswith('com.apple.') and 'notification' in label.lower() and 'center' in label.lower():
+                    candidates.append((label, path))
+        permission_diagnostics['notification_center_available_launch_agents'] = sorted(label for label, _ in candidates)
+        permission_diagnostics['legacy_notification_center_launch_agent_file_exists'] = Path('/System/Library/LaunchAgents/com.apple.notificationcenterui.plist').exists()
+        statuses = []
+        for label, path in candidates:
+            service = domain + '/' + label
+            observed = subprocess.run(['launchctl', 'print', service], capture_output=True, timeout=15)
+            bootstrap = 0
+            if observed.returncode != 0:
+                bootstrap = subprocess.run(['launchctl', 'bootstrap', domain, str(path)], capture_output=True, timeout=15).returncode
+            kick = subprocess.run(['launchctl', 'kickstart', '-k', service], capture_output=True, timeout=15).returncode
+            statuses.append({'label': label, 'initially_registered': observed.returncode == 0, 'bootstrap_exit': bootstrap, 'kickstart_exit': kick})
+        permission_diagnostics['notification_center_service_checks'] = statuses
+        apps = list(Path('/System/Library/CoreServices').glob('*Notification*.app'))
+        permission_diagnostics['notification_center_builtin_apps'] = sorted(app.name for app in apps)
+        for app in apps:
+            run(['open', '-a', str(app)])
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
         permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
@@ -411,7 +430,7 @@ try:
         def center_labels():
             return apple('''tell application "System Events"
 set labels to {}
-repeat with processName in {"NotificationCenter", "ControlCenter"}
+repeat with processName in {"NotificationCenter", "UserNotificationCenter", "ControlCenter"}
 if exists application process processName then
 repeat with e in (entire contents of application process processName)
 try
