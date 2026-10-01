@@ -17,6 +17,7 @@ output.mkdir(parents=True, exist_ok=True)
 results = []
 processes = []
 permission_diagnostics = {}
+native_notice_point = None
 
 
 def run(args, **kwargs):
@@ -199,6 +200,7 @@ def screen_words():
         source.write_text("""import Foundation
 import Vision
 import ImageIO
+import CoreGraphics
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
 let source = CGImageSourceCreateWithURL(url as CFURL, nil)!
 let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
@@ -213,14 +215,24 @@ let words: [[String: Any]] = (request.results ?? []).compactMap { item in
     let box = item.boundingBox
     return ["text": candidate.string, "x": box.midX * Double(image.width), "y": (1 - box.midY) * Double(image.height)]
 }
-let json = try JSONSerialization.data(withJSONObject: words)
+let nativeWindows: [[String: Any]] = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []).compactMap { item in
+    guard let owner = item[kCGWindowOwnerName as String] as? String,
+          ["NotificationCenter", "UserNotificationCenter"].contains(owner),
+          let bounds = item[kCGWindowBounds as String] as? [String: Any],
+          let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+          rect.width > 100, rect.width < Double(image.width) * 0.6 else { return nil }
+    return ["x": rect.minX, "y": rect.minY, "width": rect.width, "height": rect.height]
+}
+let json = try JSONSerialization.data(withJSONObject: ["words": words, "native_windows": nativeWindows])
 print(String(data: json, encoding: .utf8)!)
 """)
         run(['swiftc', str(source), '-o', str(helper)])
     permission_diagnostics['visual_navigation_helper_compiled'] = True
     screen = output.parent / 'qa-ocr-frame.png'
     run(['screencapture', '-x', str(screen)])
-    words = json.loads(run([str(helper), str(screen)]))
+    observed = json.loads(run([str(helper), str(screen)]))
+    words = observed['words']
+    permission_diagnostics['native_notification_window_bounds'] = observed['native_windows']
     permission_diagnostics['visual_navigation_word_count'] = len(words)
     permission_diagnostics['visual_navigation_pebrel_detected'] = any('pebrel' in word['text'].lower().replace(' ', '') for word in words)
     return words
@@ -458,8 +470,20 @@ end if
 end repeat
 return labels as text
 end tell''')
+        def native_notice():
+            global native_notice_point
+            words = screen_words()
+            for word in words:
+                if notice not in word['text']:
+                    continue
+                for bounds in permission_diagnostics['native_notification_window_bounds']:
+                    if bounds['x'] <= word['x'] <= bounds['x'] + bounds['width'] and bounds['y'] <= word['y'] <= bounds['y'] + bounds['height']:
+                        native_notice_point = (word['x'], word['y'])
+                        permission_diagnostics['native_notice_observed_in_system_window'] = True
+                        return True
+            return False
         try:
-            labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native notification banner exposes notice', 30)
+            wait_for(native_notice, 'native notification banner exposes notice in its system window', 30)
         except AssertionError:
             # System preferences can suppress banners; inspect the actual notification list as well.
             clock_position = apple('''tell application "System Events"
@@ -483,9 +507,13 @@ end tell''').strip()
             permission_diagnostics['notification_center_click_x'] = float(x)
             permission_diagnostics['notification_center_click_y'] = float(y)
             shot('02-notification-center-opened')
-            labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native Notification Center list exposes foreground notice', 20)
-        (output / 'notification-center.txt').write_text(labels)
-        assert notice in labels, 'Notification Center did not expose the delivered banner'
+            wait_for(native_notice, 'native Notification Center list exposes foreground notice in its system window', 20)
+        shot('03-native-notification-visible')
+        apple('tell application "Finder" to activate')
+        wait_for(native_notice, 'native notice remains visible before activation', 25)
+        native_input(*native_notice_point)
+        wait_for(lambda: apple('return frontmost of p', app_pid).strip() == 'true', 'native notification click activates its Pebrel source window', 15)
+        shot('04-native-notification-activated')
         assert 'toast failed' not in (output / 'notification.log').read_text()
         results.append('Notification Center exposes the foreground notice')
     else:
