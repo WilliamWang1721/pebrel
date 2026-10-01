@@ -166,6 +166,7 @@ def enable_test_notification_permission(executable):
             permission_diagnostics['permission_probe_has_expected_bundle_identifier'] = bool(values[4])
         except subprocess.TimeoutExpired:
             permission_diagnostics['permission_request_timed_out'] = True
+            shot('00-notification-permission-request')
         except AssertionError:
             permission_diagnostics['permission_request_helper_failed'] = True
         except (ValueError, OSError):
@@ -205,6 +206,7 @@ end tell''').strip() == 'enabled Pebrel notifications'
         permission_diagnostics['synthetic_notification_permission_enabled'] = True
     except (AssertionError, subprocess.SubprocessError):
         permission_diagnostics['synthetic_notification_permission_enabled'] = False
+        shot('00-notification-permission-settings')
     apple('tell application "System Settings" to quit')
 
 
