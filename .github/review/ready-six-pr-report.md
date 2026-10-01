@@ -1,6 +1,6 @@
 # Pebrel open PR 合并准备报告
 
-七个 PR 已通过普通 merge commit 同步至 main `894e7540e63e29d46ecf9ff936cabea16ea99f9e`。#280、#291 的最新提交已通过 10 项必需检查，其余同步后的检查仍在运行。旧提交的绿色结果不替代本轮结果。维护者审批、#288 Draft 和 #289 通知可见性验收仍是合并门槛。记录时间：2026-10-01 12:20 Asia/Singapore。
+七个 PR 已通过普通 merge commit 同步至 main `894e7540e63e29d46ecf9ff936cabea16ea99f9e`。#280、#291 的最新提交已通过 10 项必需检查，其余同步后的检查仍在运行。旧提交的绿色结果不替代本轮结果。维护者审批、#288 Draft 和 #289 通知可见性验收仍是合并门槛。记录时间：2026-10-01 12:30 Asia/Singapore。
 
 | PR | 当前提交 | 必需检查 | 正式记录 |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@
 
 17 条 Copilot 评论线程全部已解决，问题修复已对照代码核实。评论以具体问题和修改建议为主，属于建设性的审查；COMMENTED 不等于 APPROVED。
 
-已完成正确性与最小性两轮独立复查，每次主线同步后重新核对最终差异。最终本地树与发布树一致，工作区干净；版本、翻译完整性与重复键检查通过，格式、空白和架构检查通过。没有修改合并规则或把 PR 专用验收工作流加入产品差异。#291 的最终文档构建与桌面/移动浏览器检查通过：[文档 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468254)；本地 9 项文档测试通过。
+已完成正确性与最小性两轮独立复查，每次主线同步后重新核对最终差异。最终通知和更新说明的本地验证树与发布树一致；版本、翻译完整性与重复键检查通过，格式、空白和架构检查通过。没有修改合并规则或把 PR 专用验收工作流加入产品差异。#291 的最终文档构建与桌面/移动浏览器检查通过：[文档 CI](https://github.com/Kuddev/pebrel/actions/runs/36750468254)；本地 9 项文档测试通过。
 
 ## 最终提交的原生证据
 
@@ -36,7 +36,7 @@
 
 #280 的 macOS 必需报告按既有路径策略汇报成功，没有实际执行 macOS 工作负载；本 PR 的实际原生作业覆盖 Linux、Windows x64 和 Windows ARM。不会把路径选择结果描述成五个平台都执行了测试。
 
-#289 已在用户明确授权后执行公开截图验收，只上传合成测试界面的 PNG 和 acceptance.json，保留 7 天；不导出原始日志。最新 run [36805607745](https://github.com/WilliamWang1721/pebrel/actions/runs/36805607745) 绑定当前提交 `8193eeffee5a39bfb137eefbf671e6406ad1dd9e`，未观察到系统通知。修正探针后权限保持 0（未决定），此前申请超时后的“拒绝”是探针造成，不能作为产品归因证据。截图还揭示测试的 AX 滚动和时钟点击未真正打开目标页面，真实 GUI 输入重测 [36806536236](https://github.com/WilliamWang1721/pebrel/actions/runs/36806536236) 已确认通知设置滚动到底，但仍无 Pebrel 条目、授权仍未决定。独立候选分支复用已锁定 GPUI 的现代通知服务，初次候选验收 [36807123403](https://github.com/WilliamWang1721/pebrel/actions/runs/36807123403) 未通过可见性；测试导航修正仍在进行。此前 [36810102750](https://github.com/WilliamWang1721/pebrel/actions/runs/36810102750) 验证合成权限控件与系统显示，尚未更新产品 PR。最新候选 `4af7fad5adaaaedf48bdc89859916ea004594525` 保留 GPUI/legacy 实际运行模式选择，避免 GPUI 初始化旧后端的 NSBundle hook。Run [36812969445](https://github.com/WilliamWang1721/pebrel/actions/runs/36812969445) 已成功启动 macOS 26 的 `com.apple.notificationcenterui.agent` 和 `com.apple.UserNotificationCenterAgent`，截图显示原生系统提示；测试授权开关被另一条系统提示遮挡，已修正导航。Run [36813963715](https://github.com/WilliamWang1721/pebrel/actions/runs/36813963715) 的截图已显示真正的 Pebrel 原生通知正文，授权为 2；测试因辅助功能树未暴露文字而失败。最终提交原生验收 [36814505630](https://github.com/WilliamWang1721/pebrel/actions/runs/36814505630) 会核对通知文字所在的系统窗口，并实际点击验证激活。注册和派发无错误均不代替系统显示成功。
+#289 已在用户明确授权后执行公开截图验收，只上传合成测试界面的 PNG 和 acceptance.json，保留 7 天；不导出原始日志。最新 run [36805607745](https://github.com/WilliamWang1721/pebrel/actions/runs/36805607745) 绑定当前提交 `8193eeffee5a39bfb137eefbf671e6406ad1dd9e`，未观察到系统通知。修正探针后权限保持 0（未决定），此前申请超时后的“拒绝”是探针造成，不能作为产品归因证据。截图还揭示测试的 AX 滚动和时钟点击未真正打开目标页面，真实 GUI 输入重测 [36806536236](https://github.com/WilliamWang1721/pebrel/actions/runs/36806536236) 已确认通知设置滚动到底，但仍无 Pebrel 条目、授权仍未决定。独立候选分支复用已锁定 GPUI 的现代通知服务，初次候选验收 [36807123403](https://github.com/WilliamWang1721/pebrel/actions/runs/36807123403) 未通过可见性；测试导航修正仍在进行。此前 [36810102750](https://github.com/WilliamWang1721/pebrel/actions/runs/36810102750) 验证合成权限控件与系统显示，尚未更新产品 PR。最新候选 `4af7fad5adaaaedf48bdc89859916ea004594525` 保留 GPUI/legacy 实际运行模式选择，避免 GPUI 初始化旧后端的 NSBundle hook。Run [36812969445](https://github.com/WilliamWang1721/pebrel/actions/runs/36812969445) 已成功启动 macOS 26 的 `com.apple.notificationcenterui.agent` 和 `com.apple.UserNotificationCenterAgent`，截图显示原生系统提示；测试授权开关被另一条系统提示遮挡，已修正导航。Run [36813963715](https://github.com/WilliamWang1721/pebrel/actions/runs/36813963715) 的截图已显示真正的 Pebrel 原生通知正文，授权为 2；测试因辅助功能树未暴露文字而失败。最终提交验收 [36814505630](https://github.com/WilliamWang1721/pebrel/actions/runs/36814505630) 的截图也已显示原生 Pebrel 通知，但其窄窗口检查漏掉 macOS 26 的透明全屏通知窗口，因此失败。修正后的 [36815104245](https://github.com/WilliamWang1721/pebrel/actions/runs/36815104245) 直接截取系统通知进程的窗口来核对正文，并实际点击验证激活；最终验收结果仍待确认。注册和派发无错误均不代替系统显示成功。
 
 ## 剩余合并门槛
 
