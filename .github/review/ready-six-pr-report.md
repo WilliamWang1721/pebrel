@@ -45,7 +45,7 @@
 ## 剩余合并门槛
 
 1. main 要求 Kuddev 的一次新 code-owner 批准；作者不能代替，提交更新会撤销旧审批。目前原六个 PR 和新增 #418 均没有有效新批准，#280 的前次批准已被撤销。
-2. #288 仍是 Draft；本轮再次尝试转换 Ready 返回 FORBIDDEN / Resource not accessible by integration。当前 GitHub 连接修改上游 PR、发布验证评论和转换 Ready 均返回 403/FORBIDDEN；因此上游 PR 描述仍含较早提交的验证信息。
+2. #288 仍是 Draft；本轮再次尝试转换 Ready 返回 FORBIDDEN / Resource not accessible by integration。当前 GitHub 连接修改上游 PR、发布验证评论和转换 Ready 均返回 403/FORBIDDEN；因此上游 PR 描述仍含较早提交的验证信息。已准备七份[可直接替换的最新 PR 说明](pr-descriptions/)，供有上游编辑权限的账号使用。
 3. 等待当前七个提交的所有必需检查；#289 最终提交的原生界面与点击验收已通过。
 
 用户已于本轮明确同意 PNG 与合成 JSON 的公开上传。原始日志不在授权范围内，未重新导出。
