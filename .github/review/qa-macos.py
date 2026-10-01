@@ -95,9 +95,10 @@ int main(int argc, const char **argv) {
     return 1;
 }
 ''')
-    run(['clang', str(source_file), '-o', str(executable), '-framework', 'Cocoa', '-framework', 'UserNotifications'])
-    run(['codesign', '--force', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(executable)])
-    run(['codesign', '--force', '--deep', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(app)])
+    if not executable.exists():
+        run(['clang', str(source_file), '-o', str(executable), '-framework', 'Cocoa', '-framework', 'UserNotifications'])
+        run(['codesign', '--force', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(executable)])
+        run(['codesign', '--force', '--deep', '--sign', '-', '--identifier', 'io.github.kuddev.pebrel', str(app)])
     if not request:
         values = [int(v) for v in run([str(executable)]).strip().split(',')]
         permission_diagnostics['permission_probe_has_expected_bundle_identifier'] = bool(values[4])
@@ -153,41 +154,25 @@ end tell''').strip()
 
 
 def enable_test_notification_permission(executable):
-    # Changes only the synthetic Pebrel bundle on this disposable Actions runner.
-    permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
-    run(['/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', '-f', str(executable.parents[2])])
-    if permission_diagnostics['initial_notification_authorization_status'] == 0:
-        try:
-            values = notification_authorization_status(request=True)
-            permission_diagnostics['requested_notification_authorization_status'] = values[0]
-            permission_diagnostics['permission_request_error_code'] = values[1]
-            permission_diagnostics['permission_request_granted'] = bool(values[2])
-            permission_diagnostics['permission_request_error_is_UNErrorDomain'] = bool(values[3])
-            permission_diagnostics['permission_probe_has_expected_bundle_identifier'] = bool(values[4])
-        except subprocess.TimeoutExpired:
-            permission_diagnostics['permission_request_timed_out'] = True
-            shot('00-notification-permission-request')
-        except AssertionError:
-            permission_diagnostics['permission_request_helper_failed'] = True
-        except (ValueError, OSError):
-            permission_diagnostics['permission_request_invalid_result'] = True
+    # Configure only the registered synthetic Pebrel app, after actual delivery.
     current_status = notification_authorization_status()
-    permission_diagnostics['notification_authorization_status_after_request'] = current_status
-    if current_status != 1:
+    permission_diagnostics['notification_authorization_status_after_actual_delivery'] = current_status
+    if current_status in (2, 3, 4):
         return
     run(['open', 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=io.github.kuddev.pebrel'])
     def allow():
-        return apple('''tell application "System Events"
+        outcome = apple('''tell application "System Events"
 tell application process "System Settings"
 set frontmost to true
-set allElements to entire contents of window 1
+set win to window 1
+set allElements to entire contents of win
 set isPebrel to false
 repeat with e in allElements
 try
 if name of e is "Pebrel" or value of e is "Pebrel" then set isPebrel to true
 end try
 end repeat
-if not isPebrel then return "waiting"
+if isPebrel then
 repeat with e in allElements
 try
 if name of e is "Allow notifications" or description of e is "Allow notifications" then
@@ -198,15 +183,48 @@ end if
 end if
 end try
 end repeat
+end if
+set winPosition to position of win
+set winSize to size of win
+repeat with e in allElements
+try
+if name of e is "Pebrel" or value of e is "Pebrel" then
+set elementPosition to position of e
+set elementSize to size of e
+set px to item 1 of elementPosition
+set py to item 2 of elementPosition
+if px > (item 1 of winPosition) + (item 1 of winSize) * 0.3 and py > (item 2 of winPosition) + 70 and py < (item 2 of winPosition) + (item 2 of winSize) - 40 then
+click at {px + (item 1 of elementSize) / 2, py + (item 2 of elementSize) / 2}
+return "selected Pebrel settings"
+end if
+end if
+end try
+end repeat
+repeat with e in allElements
+try
+if role of e is "AXScrollArea" then
+set ep to position of e
+if item 1 of ep > (item 1 of winPosition) + (item 1 of winSize) * 0.3 then
+perform action "AXScrollDownByPage" of e
+return "scrolled notification apps"
+end if
+end if
+end try
+end repeat
 return "waiting"
 end tell
-end tell''').strip() == 'enabled Pebrel notifications'
+end tell''').strip()
+        if outcome == 'selected Pebrel settings':
+            permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
+        if outcome == 'scrolled notification apps':
+            permission_diagnostics['notification_app_list_scrolled'] = True
+        return outcome == 'enabled Pebrel notifications'
     try:
-        wait_for(allow, 'enabled notification permission for the synthetic Pebrel test bundle', 20)
+        wait_for(allow, 'enabled notification permission for the synthetic Pebrel test bundle', 25)
         permission_diagnostics['synthetic_notification_permission_enabled'] = True
     except (AssertionError, subprocess.SubprocessError):
         permission_diagnostics['synthetic_notification_permission_enabled'] = False
-        shot('00-notification-permission-settings')
+    shot('00-notification-permission-settings')
     apple('tell application "System Settings" to quit')
 
 
@@ -326,13 +344,15 @@ try:
         run(['open', '-a', '/System/Library/CoreServices/NotificationCenter.app'])
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
-        enable_test_notification_permission(executable)
+        permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
         notice = 'Pebrel foreground acceptance 20260930'
-        p, env = start(executable, 'notification', launch_services=True, args=['-e', '/bin/zsh', '-l', '-c', f'sleep 12; printf "\\033]9;{notice}\\007"; sleep 45'])
+        p, env = start(executable, 'notification', launch_services=True, args=['-e', '/bin/zsh', '-l', '-c', f'for attempt in 1 2 3 4 5; do sleep 20; printf "\\033]9;{notice}\\007"; done; sleep 45'])
         wait_for(lambda: len(snapshot(executable, env)['windows']) == 1, 'notification source window exists')
         app_pid = wait_for(lambda: int(run(['pgrep', '-f', re.escape(str(executable))]).strip().splitlines()[0]), 'Launch Services started the registered Pebrel application')
         apple('set frontmost of p to true', app_pid)
         wait_for(lambda: 'system toast source' in (output / 'notification.log').read_text(), 'foreground OSC 9 reaches system delivery', 35)
+        enable_test_notification_permission(executable)
+        apple('set frontmost of p to true', app_pid)
         shot('01-foreground-notification')
         def center_labels():
             return apple('''tell application "System Events"
@@ -355,7 +375,7 @@ end repeat
 return labels as text
 end tell''')
         try:
-            labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native notification banner exposes notice', 5)
+            labels = wait_for(lambda: (labels if notice in (labels := center_labels()) else None), 'native notification banner exposes notice', 30)
         except AssertionError:
             # System preferences can suppress banners; inspect the actual notification list as well.
             apple('''tell application "System Events"
