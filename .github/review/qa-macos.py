@@ -233,6 +233,9 @@ def enable_test_notification_permission(executable):
     if current_status in (2, 3, 4):
         return
     run(['open', 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=io.github.kuddev.pebrel'])
+    wait_for(lambda: apple('tell application "System Events" to tell application process "System Settings" to exists window 1').strip() == 'true', 'notification preferences window opened')
+    # Keep the synthetic permission switch below unrelated runner setup banners.
+    apple('tell application "System Events" to tell application process "System Settings" to set position of window 1 to {0, 180}')
     def allow():
         if notification_authorization_status() in (2, 3, 4):
             return True
