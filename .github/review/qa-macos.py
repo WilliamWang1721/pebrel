@@ -42,6 +42,8 @@ def native_input(x, y, scroll=False):
     cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
     cg.CGEventSetIntegerValueField.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int64]
     cf.CFRelease.argtypes = [ctypes.c_void_p]
+    cg.CGPreflightPostEventAccess.restype = ctypes.c_bool
+    permission_diagnostics['synthetic_python_can_post_native_events'] = bool(cg.CGPreflightPostEventAccess())
     cg.CGWarpMouseCursorPosition(Point(x, y))
     if scroll:
         cg.CGEventCreateScrollWheelEvent.restype = ctypes.c_void_p
@@ -50,6 +52,9 @@ def native_input(x, y, scroll=False):
         cg.CGEventPost(0, event)
         cf.CFRelease(event)
     else:
+        apple(f'tell application "System Events" to click at {{{round(x)}, {round(y)}}}')
+        time.sleep(.5)
+        return
         cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
         cg.CGEventCreateMouseEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, Point, ctypes.c_uint32]
         for event_type in (1, 2):
@@ -199,6 +204,8 @@ let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
 let request = VNRecognizeTextRequest()
 request.recognitionLevel = .accurate
 request.recognitionLanguages = ["en-US"]
+request.customWords = ["Pebrel"]
+request.usesLanguageCorrection = false
 try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
 let words: [[String: Any]] = (request.results ?? []).compactMap { item in
     guard let candidate = item.topCandidates(1).first else { return nil }
@@ -238,7 +245,7 @@ def enable_test_notification_permission(executable):
             native_input(left + width - 40, toggle['y'])
             permission_diagnostics['synthetic_notification_permission_toggle_clicked'] = True
             return notification_authorization_status() in (2, 3, 4)
-        row = next((word for word in words if word['text'].lower().replace(' ', '') == 'pebrel'), None)
+        row = next((word for word in words if word['text'].lower().replace(' ', '').startswith('peb')), None)
         if row:
             native_input(row['x'], row['y'])
             permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
