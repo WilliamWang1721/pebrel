@@ -412,8 +412,11 @@ try:
         permission_diagnostics['notification_center_service_checks'] = statuses
         apps = [app for app in Path('/System/Library/CoreServices').glob('*Notification*.app') if app.name in ('NotificationCenter.app', 'UserNotificationCenter.app')]
         permission_diagnostics['notification_center_builtin_apps'] = sorted(app.name for app in apps)
+        opened = []
         for app in apps:
-            run(['open', '-a', str(app)])
+            attempt = subprocess.run(['open', '-a', str(app)], capture_output=True, timeout=15)
+            opened.append({'app': app.name, 'launch_exit': attempt.returncode})
+        permission_diagnostics['notification_center_app_launch_attempts'] = opened
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
         permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
