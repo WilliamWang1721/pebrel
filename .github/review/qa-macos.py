@@ -251,89 +251,11 @@ def enable_test_notification_permission(executable):
             permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
             shot('00-pebrel-notification-permission-detail')
             return False
-        outcome = apple('''tell application "System Events"
-tell application process "System Settings"
-set frontmost to true
-set win to window 1
-set allElements to entire contents of win
-set isPebrel to false
-repeat with e in allElements
-try
-set elementText to ""
-try
-set elementText to elementText & (name of e as text)
-end try
-try
-set elementText to elementText & (value of e as text)
-end try
-try
-set elementText to elementText & (description of e as text)
-end try
-if elementText contains "Pebrel" then set isPebrel to true
-end try
-end repeat
-if isPebrel then
-repeat with e in allElements
-try
-if name of e is "Allow notifications" or description of e is "Allow notifications" then
-if role of e is "AXCheckBox" or role of e is "AXSwitch" then
-if value of e is 0 then click e
-return "enabled Pebrel notifications"
-end if
-end if
-end try
-end repeat
-end if
-set winPosition to position of win
-set winSize to size of win
-repeat with e in allElements
-try
-set elementText to ""
-try
-set elementText to elementText & (name of e as text)
-end try
-try
-set elementText to elementText & (value of e as text)
-end try
-try
-set elementText to elementText & (description of e as text)
-end try
-if elementText contains "Pebrel" then
-set elementPosition to position of e
-set elementSize to size of e
-set px to item 1 of elementPosition
-set py to item 2 of elementPosition
-if px > (item 1 of winPosition) + (item 1 of winSize) * 0.3 and py > (item 2 of winPosition) + 70 and py < (item 2 of winPosition) + (item 2 of winSize) - 40 then
-return "click," & (px + (item 1 of elementSize) / 2) & "," & (py + (item 2 of elementSize) / 2)
-end if
-end if
-end try
-end repeat
-repeat with e in allElements
-try
-if role of e is "AXScrollArea" then
-set ep to position of e
-if item 1 of ep > (item 1 of winPosition) + (item 1 of winSize) * 0.3 then
-set es to size of e
-return "scroll," & ((item 1 of ep) + (item 1 of es) / 2) & "," & ((item 2 of ep) + (item 2 of es) / 2)
-end if
-end if
-end try
-end repeat
-return "waiting"
-end tell
-end tell''').strip()
-        if outcome.startswith('click,'):
-            _, x, y = outcome.split(',')
-            native_input(float(x), float(y))
-            permission_diagnostics['synthetic_Pebrel_notification_row_clicked'] = True
-        if outcome.startswith('scroll,'):
-            _, x, y = outcome.split(',')
-            native_input(float(x), float(y), scroll=True)
-            permission_diagnostics['notification_app_list_scrolled'] = True
-        return outcome == 'enabled Pebrel notifications'
+        native_input(left + width * .65, top + height * .6, scroll=True)
+        permission_diagnostics['notification_app_list_scrolled'] = True
+        return False
     try:
-        wait_for(allow, 'enabled notification permission for the synthetic Pebrel test bundle', 25)
+        wait_for(allow, 'enabled notification permission for the synthetic Pebrel test bundle', 45)
         permission_diagnostics['synthetic_notification_permission_enabled'] = True
     except (AssertionError, subprocess.SubprocessError):
         permission_diagnostics['synthetic_notification_permission_enabled'] = False
