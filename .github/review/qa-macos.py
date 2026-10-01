@@ -6,6 +6,7 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -376,7 +377,16 @@ try:
         key(p.pid, 'q')
         wait_for(lambda: p.poll() is not None, 'normal app graceful exit')
     elif scenario == 'notification':
-        run(['open', '-a', '/System/Library/CoreServices/NotificationCenter.app'])
+        service = f'gui/{os.getuid()}/com.apple.notificationcenterui'
+        observed = subprocess.run(['launchctl', 'print', service], capture_output=True, timeout=15)
+        permission_diagnostics['notification_center_launch_agent_registered'] = observed.returncode == 0
+        if observed.returncode != 0:
+            setup = subprocess.run(['launchctl', 'bootstrap', f'gui/{os.getuid()}', '/System/Library/LaunchAgents/com.apple.notificationcenterui.plist'], capture_output=True, timeout=15)
+            permission_diagnostics['notification_center_launch_agent_bootstrap_exit'] = setup.returncode
+        kick = subprocess.run(['launchctl', 'kickstart', '-k', service], capture_output=True, timeout=15)
+        permission_diagnostics['notification_center_launch_agent_kickstart_exit'] = kick.returncode
+        if kick.returncode != 0:
+            run(['open', '-a', '/System/Library/CoreServices/NotificationCenter.app'])
         wait_for(lambda: apple('tell application \"System Events\" to exists application process \"NotificationCenter\"').strip() == 'true', 'native Notification Center is running')
         executable = bundle('notification')
         permission_diagnostics['initial_notification_authorization_status'] = notification_authorization_status()
@@ -388,6 +398,14 @@ try:
         apple('set frontmost of p to true', app_pid)
         wait_for(lambda: 'system toast source' in (output / 'notification.log').read_text(), 'foreground OSC 9 reaches system delivery', 35)
         enable_test_notification_permission(executable)
+        if notification_authorization_status() in (2, 3, 4):
+            # The initial app registered while permission was denied. Test a fresh authorized process.
+            os.kill(app_pid, signal.SIGTERM)
+            wait_for(lambda: p.poll() is not None, 'initial permission-registration app exited', 15)
+            p, env = start(executable, 'notification-authorized', launch_services=True, args=['-e', '/bin/zsh', '-l', '-c', f'for attempt in 1 2 3 4; do sleep 15; printf "\\033]9;{notice}\\007"; done; sleep 45'])
+            app_pid = wait_for(lambda: int(run(['pgrep', '-f', re.escape(str(executable))]).strip().splitlines()[0]), 'registered authorized Pebrel application restarted')
+            apple('set frontmost of p to true', app_pid)
+            wait_for(lambda: 'system toast source' in (output / 'notification-authorized.log').read_text(), 'authorized foreground OSC 9 reaches system delivery', 25)
         apple('set frontmost of p to true', app_pid)
         shot('01-foreground-notification')
         def center_labels():
@@ -456,6 +474,8 @@ finally:
         diagnostics['gpui_missing_application_ivar'] = 'ivar' in portable_log and 'panicked at' in portable_log
     if scenario == 'notification' and (output / 'notification.log').exists():
         notification_log = (output / 'notification.log').read_text()
+        if (output / 'notification-authorized.log').exists():
+            notification_log += (output / 'notification-authorized.log').read_text()
         try:
             center_text = center_labels()
             diagnostics['pebrel_notification_permission_prompt'] = 'Pebrel' in center_text and 'Allow' in center_text
@@ -466,7 +486,10 @@ finally:
         except (AssertionError, subprocess.SubprocessError, ValueError, OSError):
             diagnostics['notification_authorization_probe_failed'] = True
         diagnostics['foreground_policy_install_failed'] = 'Could not enable foreground' in notification_log
-        diagnostics['native_dispatch_failed'] = 'toast failed' in notification_log
+        diagnostics['native_dispatch_failed'] = 'toast failed' in notification_log or 'failed to deliver system notification' in notification_log
+        diagnostics['modern_notification_authorization_denied'] = 'system notification authorization denied' in notification_log
+        diagnostics['modern_notification_authorization_failed'] = 'system notification authorization failed' in notification_log
+        diagnostics['actual_system_delivery_attempts'] = notification_log.count('system toast source')
         diagnostics['native_bundle_registration_missing'] = 'require a registered' in notification_log
         diagnostics['native_activation_failed'] = 'activation listener failed' in notification_log
     (output / 'acceptance.json').write_text(json.dumps({'scenario': scenario, 'checks': results, 'diagnostics': diagnostics}, indent=2))
