@@ -26,6 +26,21 @@ struct Callbacks {
     actions: Vec<ToastAction>,
 }
 
+impl Callbacks {
+    fn activate(self, action_id: Option<&str>) {
+        if let Some(id) = action_id {
+            if let Some(index) =
+                id.strip_prefix("choice-").and_then(|value| value.parse::<usize>().ok())
+                && let Some(action) = self.actions.get(index)
+            {
+                (action.activate)();
+            }
+        } else if let Some(activate) = self.activation {
+            activate();
+        }
+    }
+}
+
 pub(crate) fn init(cx: &mut App) {
     // The pinned GPUI backend aborts if UNUserNotificationCenter is used outside a bundle.
     if objc2_foundation::NSBundle::mainBundle().bundleIdentifier().is_none() {
@@ -48,16 +63,7 @@ pub(crate) fn init(cx: &mut App) {
         };
         // Release the registry borrow before activation can re-enter application delivery.
         cx.dismiss_system_notification(&callback.tag);
-        if let Some(id) = response.action_id {
-            if let Some(index) =
-                id.strip_prefix("choice-").and_then(|value| value.parse::<usize>().ok())
-                && let Some(action) = callback.actions.get(index)
-            {
-                (action.activate)();
-            }
-        } else if let Some(activate) = callback.activation {
-            activate();
-        }
+        callback.activate(response.action_id.as_deref());
     });
     cx.spawn(async move |cx| {
         let mut serial = 0_u64;
@@ -115,5 +121,43 @@ pub(super) fn dispatch(
     };
     if let Err(error) = sender.try_send(Pending { title, body, activation, actions }) {
         log::warn!("notify: native notification queue unavailable: {error}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn native_response_routes_default_or_one_valid_choice_without_fallback() {
+        for (response, expected) in [
+            (None, 1),
+            (Some("choice-0"), 10),
+            (Some("choice-1"), 100),
+            (Some("choice-2"), 0),
+            (Some("choice--1"), 0),
+            (Some("choice-999999999999999999999999999"), 0),
+            (Some("unknown"), 0),
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let callback = |weight| {
+                let calls = calls.clone();
+                Arc::new(move || {
+                    calls.fetch_add(weight, Ordering::SeqCst);
+                }) as ToastActivation
+            };
+            let callbacks = Callbacks {
+                tag: "test".into(),
+                activation: Some(callback(1)),
+                actions: vec![
+                    ToastAction { label: "Yes".into(), activate: callback(10) },
+                    ToastAction { label: "No".into(), activate: callback(100) },
+                ],
+            };
+            callbacks.activate(response);
+            assert_eq!(calls.load(Ordering::SeqCst), expected, "response={response:?}");
+        }
     }
 }

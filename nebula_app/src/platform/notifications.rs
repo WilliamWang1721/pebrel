@@ -22,8 +22,8 @@ pub(crate) fn toast_clickable(title: &str, body: &str, activation: Option<ToastA
     toast_actionable(title, body, activation, Vec::new());
 }
 
-/// Dispatch owns the platform's worker and COM lifetime; notification policy
-/// remains in the application capability.
+/// Platform delivery owns native lifetime; notification policy remains in the
+/// application capability. GPUI macOS delivery is queued to its foreground executor.
 pub(crate) fn dispatch(
     title: String,
     body: String,
@@ -54,45 +54,8 @@ pub fn prepare() {
             else {
                 return false;
             };
-            let registered = notify_rust::set_application(&identifier.to_string()).is_ok();
-            if registered && !enable_foreground_notifications() {
-                log::warn!("Could not enable foreground macOS system notifications");
-            }
-            registered
+            notify_rust::set_application(&identifier.to_string()).is_ok()
         });
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn enable_foreground_notifications() -> bool {
-    use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
-    use objc2::{Encode, ffi, sel};
-
-    unsafe extern "C-unwind" fn should_present(
-        _: &AnyObject,
-        _: Sel,
-        _: &AnyObject,
-        _: &AnyObject,
-    ) -> Bool {
-        Bool::YES
-    }
-
-    let Some(class) = AnyClass::get(c"NotificationCenterDelegate") else { return false };
-    let selector = sel!(userNotificationCenter:shouldPresentNotification:);
-    let encoding = std::ffi::CString::new(format!("{}@:@@", Bool::ENCODING)).unwrap();
-    let callback: unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, &AnyObject) -> Bool =
-        should_present;
-    // The pinned mac-notification-sys delegate omits the foreground policy callback.
-    // SAFETY: the callback matches BOOL(id, SEL, id, id), using this target's BOOL encoding.
-    // prepare's OnceLock installs it once; existing delivery and activation methods remain owned by the backend.
-    unsafe {
-        ffi::class_addMethod(
-            class as *const AnyClass as *mut AnyClass,
-            selector,
-            std::mem::transmute::<_, Imp>(callback),
-            encoding.as_ptr(),
-        )
-        .as_bool()
     }
 }
 
