@@ -40,6 +40,7 @@ def native_input(x, y, scroll=False):
     cf = ctypes.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
     cg.CGWarpMouseCursorPosition.argtypes = [Point]
     cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+    cg.CGEventSetIntegerValueField.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int64]
     cf.CFRelease.argtypes = [ctypes.c_void_p]
     cg.CGWarpMouseCursorPosition(Point(x, y))
     if scroll:
@@ -53,6 +54,7 @@ def native_input(x, y, scroll=False):
         cg.CGEventCreateMouseEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, Point, ctypes.c_uint32]
         for event_type in (1, 2):
             event = cg.CGEventCreateMouseEvent(None, event_type, Point(x, y), 0)
+            cg.CGEventSetIntegerValueField(event, 1, 1)
             cg.CGEventPost(0, event)
             cf.CFRelease(event)
             time.sleep(.08)
