@@ -388,7 +388,7 @@ try:
                     continue
                 info = plistlib.loads(path.read_bytes())
                 label = info.get('Label', '')
-                if label.startswith('com.apple.') and 'notification' in label.lower() and 'center' in label.lower():
+                if label.startswith('com.apple.') and 'notification' in label.lower() and 'center' in label.lower() and not label.endswith('-LoginWindow'):
                     candidates.append((label, path))
         permission_diagnostics['notification_center_available_launch_agents'] = sorted(label for label, _ in candidates)
         permission_diagnostics['legacy_notification_center_launch_agent_file_exists'] = Path('/System/Library/LaunchAgents/com.apple.notificationcenterui.plist').exists()
@@ -397,12 +397,17 @@ try:
             service = domain + '/' + label
             observed = subprocess.run(['launchctl', 'print', service], capture_output=True, timeout=15)
             bootstrap = 0
+            enabled = 0
+            disabled = subprocess.run(['launchctl', 'print-disabled', domain], capture_output=True, text=True, timeout=15).stdout
+            was_disabled = bool(re.search(re.escape('\"' + label + '\"') + r'\s*=>\s*true', disabled))
             if observed.returncode != 0:
+                # Restore only the shipped notification UI service in this disposable test session.
+                enabled = subprocess.run(['launchctl', 'enable', service], capture_output=True, timeout=15).returncode
                 bootstrap = subprocess.run(['launchctl', 'bootstrap', domain, str(path)], capture_output=True, timeout=15).returncode
             kick = subprocess.run(['launchctl', 'kickstart', '-k', service], capture_output=True, timeout=15).returncode
-            statuses.append({'label': label, 'initially_registered': observed.returncode == 0, 'bootstrap_exit': bootstrap, 'kickstart_exit': kick})
+            statuses.append({'label': label, 'initially_registered': observed.returncode == 0, 'initially_disabled': was_disabled, 'enable_exit': enabled, 'bootstrap_exit': bootstrap, 'kickstart_exit': kick})
         permission_diagnostics['notification_center_service_checks'] = statuses
-        apps = list(Path('/System/Library/CoreServices').glob('*Notification*.app'))
+        apps = [app for app in Path('/System/Library/CoreServices').glob('*Notification*.app') if app.name in ('NotificationCenter.app', 'UserNotificationCenter.app')]
         permission_diagnostics['notification_center_builtin_apps'] = sorted(app.name for app in apps)
         for app in apps:
             run(['open', '-a', str(app)])
