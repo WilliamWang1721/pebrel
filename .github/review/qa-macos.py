@@ -217,13 +217,14 @@ let words: [[String: Any]] = (request.results ?? []).compactMap { item in
 }
 let nativeWindows: [[String: Any]] = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []).compactMap { item in
     guard let owner = item[kCGWindowOwnerName as String] as? String,
-          ["NotificationCenter", "UserNotificationCenter"].contains(owner),
+          owner.lowercased().contains("notification"), owner.lowercased().contains("center"),
           let bounds = item[kCGWindowBounds as String] as? [String: Any],
           let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
-          rect.width > 100, rect.width < Double(image.width) * 0.6 else { return nil }
-    return ["x": rect.minX, "y": rect.minY, "width": rect.width, "height": rect.height]
+          rect.width > 100, rect.height > 40,
+          let id = item[kCGWindowNumber as String] as? NSNumber else { return nil }
+    return ["id": id.intValue, "x": rect.minX, "y": rect.minY, "width": rect.width, "height": rect.height]
 }
-let json = try JSONSerialization.data(withJSONObject: ["words": words, "native_windows": nativeWindows])
+let json = try JSONSerialization.data(withJSONObject: ["words": words, "native_windows": nativeWindows, "image_width": image.width, "image_height": image.height])
 print(String(data: json, encoding: .utf8)!)
 """)
         run(['swiftc', str(source), '-o', str(helper)])
@@ -472,15 +473,26 @@ return labels as text
 end tell''')
         def native_notice():
             global native_notice_point
-            words = screen_words()
-            for word in words:
-                if notice not in word['text']:
-                    continue
-                for bounds in permission_diagnostics['native_notification_window_bounds']:
-                    if bounds['x'] <= word['x'] <= bounds['x'] + bounds['width'] and bounds['y'] <= word['y'] <= bounds['y'] + bounds['height']:
-                        native_notice_point = (word['x'], word['y'])
+            screen_words()
+            for bounds in permission_diagnostics['native_notification_window_bounds']:
+                try:
+                    isolated = output.parent / 'qa-system-notification-window.png'
+                    run(['screencapture', '-x', '-o', '-l', str(bounds['id']), str(isolated)])
+                    observed = json.loads(run([str(output.parent / 'qa-screen-words'), str(isolated)]))
+                    permission_diagnostics['native_notification_window_capture_succeeded'] = True
+                    for word in observed['words']:
+                        if notice not in word['text']:
+                            continue
+                        # Notification Center owns a transparent full-screen layer on macOS 26.
+                        # Restrict that layer to its upper notification area, excluding app toasts below.
+                        if bounds['height'] > 500 and word['y'] > observed['image_height'] * .55:
+                            continue
+                        native_notice_point = (bounds['x'] + word['x'] * bounds['width'] / observed['image_width'], bounds['y'] + word['y'] * bounds['height'] / observed['image_height'])
                         permission_diagnostics['native_notice_observed_in_system_window'] = True
+                        shutil.copy2(isolated, output / '03-native-notification-owned-window.png')
                         return True
+                except (AssertionError, subprocess.SubprocessError):
+                    continue
             return False
         try:
             wait_for(native_notice, 'native notification banner exposes notice in its system window', 30)
