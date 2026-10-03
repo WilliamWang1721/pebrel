@@ -56,7 +56,12 @@ jobs:
         env:
           PEBREL_349_EXPECT_ELEVATED: "0"
         run: python scripts/conformance/windows_standard_user.py scripts/tests/issue349_token_probe.py tmp/issue349-build.jsonl
+      - name: Read both token probe results
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem tmp/issue349-token-* | ForEach-Object { Write-Output $_.Name; Get-Content -LiteralPath $_.FullName }
       - name: Existing native installation transaction fixtures
+        if: always()
         shell: pwsh
         run: ./scripts/tests/test_update_handoff.ps1 -OutputRoot "$env:RUNNER_TEMP/issue349-handoff"
       - uses: actions/upload-artifact@v4
@@ -65,5 +70,6 @@ jobs:
           name: issue349-update-boundary
           path: |
             tmp/issue349-build.jsonl
+            tmp/issue349-token-*
             ${{ runner.temp }}/issue349-handoff/results.json
           retention-days: 7
