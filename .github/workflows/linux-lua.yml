@@ -69,7 +69,7 @@ jobs:
           path = pathlib.Path('nebula_app/src/gpui_shell/workspace/windowing/transfer_tests.rs')
           text = path.read_text()
           marker = '#[gpui::test]\nfn ordinary_window_geometry_is_in_the_durable_snapshot'
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'geometry-fixture.rs').write_text('\n' + text[text.index(marker):])
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'geometry-fixture.rs').write_text('\n' + text[text.index(marker):text.index('\n#[gpui::test]', text.index(marker) + len(marker))])
           PY
           git checkout --force 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
           python - <<'PY'
@@ -94,7 +94,7 @@ jobs:
           cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support startup_geometry -- --nocapture
           cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support session::window_layout -- --nocapture
           cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support gpui_shell::config::tests -- --nocapture
-          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support platform::startup::geometry_tests -- --nocapture
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support platform::startup:: -- --nocapture
       - uses: actions/upload-artifact@v4
         if: always()
         with:
