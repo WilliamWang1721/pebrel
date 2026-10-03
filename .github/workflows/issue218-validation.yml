@@ -9,6 +9,8 @@ jobs:
     if: github.repository == 'WilliamWang1721/pebrel'
     runs-on: windows-2025
     timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
         with:
