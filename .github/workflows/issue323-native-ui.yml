@@ -1,0 +1,45 @@
+name: Issue 323 native resume settings UI
+on:
+  push:
+    branches: [codex/issue-323-native-ui]
+permissions:
+  contents: read
+concurrency:
+  group: issue323-native-ui
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: 7b4004409c2835a238f1c2c4a925ac0509f12146
+          path: candidate
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ready-native-interface
+          workspaces: candidate -> target
+          cache-on-failure: true
+      - name: Build exact source head
+        working-directory: candidate
+        run: cargo build --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-shell
+      - name: Native resume settings controls and screenshots
+        run: python3 .github/review/issue323-native-ui.py resume-args "$PWD/candidate/target/ci/pebrel" "$PWD/candidate" 7b4004409c2835a238f1c2c4a925ac0509f12146 "$RUNNER_TEMP/native-resume-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue323-native-ui-7b400440
+          path: |
+            ${{ runner.temp }}/native-resume-evidence/acceptance.json
+            ${{ runner.temp }}/native-resume-evidence/*.png
+          retention-days: 7
+          if-no-files-found: error
