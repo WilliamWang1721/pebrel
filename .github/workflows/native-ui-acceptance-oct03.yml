@@ -17,12 +17,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - pr: 443
-            scenario: theme
-            sha: 8042090da44fa6e9324595fa9862780a2d6aaa53
-          - pr: 445
-            scenario: line-height
-            sha: 6d8c6f50b5eff98941b2fa57a224d74af7a2bf5c
           - pr: 447
             scenario: scrollbar
             sha: 81bf4f361cba840a6f3d09894ca76c3ed2041ad2

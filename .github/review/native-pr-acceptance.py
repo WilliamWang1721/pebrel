@@ -51,6 +51,7 @@ def key(text, modifiers="command down"):
     time.sleep(.6)
 
 def click(x, y):
+    move(x, y)
     apple(f'click at {{{round(x)}, {round(y)}}}')
     actions.append({"click": [x, y]})
     time.sleep(.5)
