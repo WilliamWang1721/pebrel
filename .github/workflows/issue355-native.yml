@@ -1,0 +1,55 @@
+name: Issue 355 native Windows pane gestures
+on:
+  push:
+    branches: [codex/issue355-native-evidence]
+permissions:
+  contents: read
+jobs:
+  windows:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      CANDIDATE_HEAD: 649f91758c2c1f7d1273965b14e0b9be7ece3b05
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: 649f91758c2c1f7d1273965b14e0b9be7ece3b05
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: candidate -> target
+          save-if: "false"
+      - name: Build the exact product head
+        working-directory: candidate
+        shell: pwsh
+        run: |
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo build --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-shell
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Real mouse, keyboard and live PTY evidence with an ordinary token
+        shell: pwsh
+        run: |
+          python candidate/scripts/conformance/windows_standard_user.py .github/review/issue355-native.py "$PWD/candidate/target/ci/pebrel.exe" "$PWD/candidate" "$env:CANDIDATE_HEAD" "$env:RUNNER_TEMP/issue355-native"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue355-native-windows
+          path: ${{ runner.temp }}/issue355-native
+          retention-days: 7
+          if-no-files-found: error
