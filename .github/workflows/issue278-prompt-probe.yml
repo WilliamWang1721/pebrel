@@ -1,0 +1,45 @@
+name: Issue 278 PowerShell environment prompt probe
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Product commit to validate
+        type: string
+        default: codex/issue-278-python-env
+  push:
+    branches: [codex/issue-278-prompt-validation]
+permissions:
+  contents: read
+jobs:
+  powershell:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      CARGO_TARGET_DIR: target/ci
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_ref || 'codex/issue-278-python-env' }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare a real Python virtual environment
+        shell: pwsh
+        run: |
+          Get-Command powershell -ErrorAction Stop
+          python -m venv "$env:RUNNER_TEMP/issue278-venv"
+          "PEBREL_QA_VENV_ACTIVATE=$env:RUNNER_TEMP/issue278-venv/Scripts/Activate.ps1" >> $env:GITHUB_ENV
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: core
+          target: target/ci
+          revision: dependencies-v1
+          save-if: "false"
+      - name: Execute the production PowerShell integration helper
+        shell: pwsh
+        run: cargo test --locked -p nebula_terminal powershell_ -- --nocapture
