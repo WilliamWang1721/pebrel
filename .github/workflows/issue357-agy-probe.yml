@@ -1,0 +1,86 @@
+name: Issue 357 agy last-column diagnosis
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/issue-357-agy-status]
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            arch: x64
+            agy: windows_amd64
+          - os: windows-11-arm
+            arch: arm64
+            agy: windows_arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Record baseline and official agy binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory diagnostic-output -Force | Out-Null
+          git rev-parse HEAD | Set-Content diagnostic-output/source.txt
+          git rev-parse HEAD^ | Add-Content diagnostic-output/source.txt
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber | Out-File diagnostic-output/windows.txt
+          powershell.exe -NoProfile -Command '$PSVersionTable' | Out-File diagnostic-output/powershell.txt
+          $manifest = Invoke-RestMethod 'https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/${{ matrix.agy }}.json'
+          $manifest | ConvertTo-Json | Set-Content diagnostic-output/agy-manifest.json
+          Invoke-WebRequest $manifest.url -OutFile diagnostic-output/agy.exe
+          if ((Get-FileHash diagnostic-output/agy.exe -Algorithm SHA512).Hash.ToLower() -ne $manifest.sha512.ToLower()) { throw 'agy SHA512 mismatch' }
+          go version -m diagnostic-output/agy.exe | Out-File diagnostic-output/agy-build.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Go build metadata' }
+          "AGY_BINARY=$((Resolve-Path diagnostic-output/agy.exe).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build fork-only probe against unchanged main production source
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting failed' }
+          git diff | Out-File -Encoding utf8 diagnostic-output/remote-format.patch
+          cargo build --locked -p nebula_terminal --example issue357_probe
+          if ($LASTEXITCODE -ne 0) { throw 'Probe build failed' }
+          ./scripts/prepare-windows-runtime.ps1 -Destination target/debug/examples -Architecture '${{ matrix.arch }}'
+      - name: Capture PS5.1 and real agy startup via bundled ConPTY
+        shell: pwsh
+        run: |
+          ./target/debug/examples/issue357_probe.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Probe failed' }
+      - name: Compare existing PR 451 ASCII controls
+        shell: pwsh
+        run: |
+          Copy-Item nebula_terminal/examples/issue357_probe.rs "$env:RUNNER_TEMP/issue357_probe.rs"
+          git reset --hard HEAD
+          git fetch https://github.com/Kuddev/pebrel.git refs/pull/451/head
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch PR 451' }
+          git checkout --detach FETCH_HEAD
+          git rev-parse HEAD | Set-Content diagnostic-output/pr451-source.txt
+          New-Item -ItemType Directory nebula_terminal/examples -Force | Out-Null
+          Copy-Item "$env:RUNNER_TEMP/issue357_probe.rs" nebula_terminal/examples/issue357_probe.rs
+          cargo run --locked -p nebula_terminal --example issue357_probe -- --controls-only
+          if ($LASTEXITCODE -ne 0) { throw 'PR 451 controls failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue357-${{ matrix.os }}
+          path: |
+            diagnostic-output/*.txt
+            diagnostic-output/*.vt
+            diagnostic-output/*.json
+            diagnostic-output/*.patch
+          retention-days: 7
