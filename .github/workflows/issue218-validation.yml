@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: a80783a593014ce01fdcc98e6959d0a9a554d213
+          ref: d74d66b1f70ad843b24eb4813ee1e10880f7e31e
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: issue218-explorer-evidence-a80783a5
+          name: issue218-explorer-evidence-d74d66b1
           path: |
             source-head.txt
             tmp/**/result.txt
