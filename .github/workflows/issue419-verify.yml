@@ -1,0 +1,62 @@
+name: Issue 419 native transparency proof
+on:
+  push:
+    branches: [codex/issue-419-native-proof]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-opacity:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          extra-key: '-release-check-v2'
+          target: target/ci
+          revision: dependencies-v1
+          save-if: 'false'
+      - name: Read runner capabilities without changing system settings
+        shell: pwsh
+        run: |
+          $env:PEBREL_OPACITY_QA_OUTPUT = Join-Path $env:RUNNER_TEMP 'opacity-proof'
+          "PEBREL_OPACITY_QA_OUTPUT=$env:PEBREL_OPACITY_QA_OUTPUT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force -Path $env:PEBREL_OPACITY_QA_OUTPUT | Out-Null
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,BuildNumber | Format-List
+          Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion | Format-List
+          Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name EnableTransparency -ErrorAction SilentlyContinue | Select-Object EnableTransparency | Format-List
+      - name: Retain the remote formatter patch
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --binary -- nebula_app/src/gpui_shell/wallpaper.rs nebula_app/src/gpui_shell/wallpaper/native_transparency_tests.rs | Out-File -Encoding utf8 "$env:PEBREL_OPACITY_QA_OUTPUT/format.patch"
+      - name: Run the real GPUI HWND and desktop ROI regression
+        shell: pwsh
+        run: |
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --bin pebrel --features gpui-test-support native_windows_none_opacity_preserves_transparent_composition -- --ignored --nocapture --test-threads=1 2>&1 | Tee-Object -FilePath "$env:PEBREL_OPACITY_QA_OUTPUT/native.log"
+          exit $LASTEXITCODE
+      - name: Check architecture against the baseline
+        if: always()
+        shell: pwsh
+        run: python scripts/check_architecture.py --base 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue419-native-proof
+          path: ${{ runner.temp }}/opacity-proof

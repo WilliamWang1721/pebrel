@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::time::Duration;
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{ClientToScreen, GetDC, GetPixel, ReleaseDC};
-use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetClientRect, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
 };
@@ -80,73 +79,62 @@ fn hwnd(window: &Window) -> HWND {
     handle.hwnd.get() as HWND
 }
 
-fn client_rect(handle: HWND) -> (POINT, RECT) {
+fn client_rect(handle: HWND) -> Result<(POINT, RECT), String> {
     let mut origin = POINT { x: 0, y: 0 };
     let mut bounds: RECT = unsafe { std::mem::zeroed() };
-    assert_ne!(unsafe { GetClientRect(handle, &mut bounds) }, 0);
-    assert_ne!(unsafe { ClientToScreen(handle, &mut origin) }, 0);
-    (origin, bounds)
+    if unsafe { GetClientRect(handle, &mut bounds) } == 0
+        || unsafe { ClientToScreen(handle, &mut origin) } == 0
+    {
+        return Err("owned native client rectangle unavailable".into());
+    }
+    Ok((origin, bounds))
 }
 
-fn accent_state(handle: HWND) -> u32 {
-    type Getter = unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> i32;
-    let getter: Getter = unsafe {
-        let module = GetModuleHandleA(c"user32.dll".as_ptr() as *const u8);
-        let address =
-            GetProcAddress(module, c"GetWindowCompositionAttribute".as_ptr() as *const u8)
-                .expect("native WCA readback must be available");
-        std::mem::transmute(address)
-    };
-    let mut policy = AccentPolicy { state: 0, flags: 0, gradient_color: 0, animation_id: 0 };
-    let mut data = WindowCompositionAttributeData {
-        attribute: 19,
-        data: &mut policy as *mut _ as *mut core::ffi::c_void,
-        size: std::mem::size_of::<AccentPolicy>(),
-    };
-    assert_ne!(unsafe { getter(handle, &mut data) }, 0, "native accent readback failed");
-    policy.state
+fn accent_state(handle: HWND) -> Option<u32> {
+    test_native_accent_state(handle as isize)
 }
 
-fn pixel(dc: windows_sys::Win32::Graphics::Gdi::HDC, x: i32, y: i32) -> [u8; 3] {
+fn pixel(dc: windows_sys::Win32::Graphics::Gdi::HDC, x: i32, y: i32) -> Result<[u8; 3], String> {
     let color = unsafe { GetPixel(dc, x, y) };
-    assert_ne!(color, u32::MAX, "interactive desktop pixels unavailable");
-    [color as u8, (color >> 8) as u8, (color >> 16) as u8]
+    if color == u32::MAX {
+        return Err("interactive desktop pixels unavailable".into());
+    }
+    Ok([color as u8, (color >> 8) as u8, (color >> 16) as u8])
 }
 
-fn sample(backdrop: HWND, front: HWND, scale: f32, label: &str) -> i32 {
-    let (back_origin, _) = client_rect(backdrop);
-    let (origin, bounds) = client_rect(front);
+fn sample(backdrop: HWND, front: HWND, scale: f32, label: &str) -> Result<i32, String> {
+    let (back_origin, _) = client_rect(backdrop)?;
+    let (origin, bounds) = client_rect(front)?;
     let x = back_origin.x + ((origin.x + bounds.right / 2 - back_origin.x) / 32) * 32;
     let y = origin.y + bounds.bottom / 2;
     let dc = unsafe { GetDC(std::ptr::null_mut()) };
-    assert!(!dc.is_null(), "interactive desktop DC unavailable");
-    let white = pixel(dc, x + 8, y);
-    let black = pixel(dc, x + 24, y);
-    let opaque = pixel(dc, origin.x + (80.0 * scale) as i32, origin.y + (80.0 * scale) as i32);
-    let mut image = image::RgbImage::new(32, 8);
-    for py in 0..8 {
-        for px in 0..32 {
-            image.put_pixel(px, py, image::Rgb(pixel(dc, x + px as i32, y + py as i32)));
+    if dc.is_null() { return Err("interactive desktop DC unavailable".into()); }
+    let result = (|| {
+        let white = pixel(dc, x + 8, y)?;
+        let black = pixel(dc, x + 24, y)?;
+        let opaque = pixel(dc, origin.x + (80.0 * scale) as i32, origin.y + (80.0 * scale) as i32)?;
+        let mut image = image::RgbImage::new(32, 8);
+        for py in 0..8 { for px in 0..32 {
+            image.put_pixel(px, py, image::Rgb(pixel(dc, x + px as i32, y + py as i32)?));
+        }}
+        if let Some(directory) = std::env::var_os("PEBREL_OPACITY_QA_OUTPUT") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+            image.save(directory.join(format!("{label}.png"))).map_err(|error| error.to_string())?;
         }
-    }
+        if opaque[0] <= 235 || opaque[1] >= 20 || opaque[2] >= 20 {
+            return Err(format!("opacity dimmed opaque content: {opaque:?}"));
+        }
+        let contrast = white.iter().map(|v| i32::from(*v)).sum::<i32>() / 3
+            - black.iter().map(|v| i32::from(*v)).sum::<i32>() / 3;
+        crate::gpui_shell::try_write_stderr(format_args!(
+            "native opacity ROI {label}: successful_setter_state={:?}, white={white:?}, black={black:?}, contrast={contrast}, Windows build={}\n",
+            accent_state(front), windows_build_number()
+        ));
+        Ok(contrast)
+    })();
     unsafe { ReleaseDC(std::ptr::null_mut(), dc) };
-    if let Some(directory) = std::env::var_os("PEBREL_OPACITY_QA_OUTPUT") {
-        let directory = std::path::PathBuf::from(directory);
-        std::fs::create_dir_all(&directory).unwrap();
-        image.save(directory.join(format!("{label}.png"))).unwrap();
-    }
-    assert!(
-        opaque[0] > 235 && opaque[1] < 20 && opaque[2] < 20,
-        "opacity must not dim opaque content: {opaque:?}"
-    );
-    let contrast = white.iter().map(|v| i32::from(*v)).sum::<i32>() / 3
-        - black.iter().map(|v| i32::from(*v)).sum::<i32>() / 3;
-    crate::gpui_shell::try_write_stderr(format_args!(
-        "native opacity ROI {label}: accent={}, white={white:?}, black={black:?}, contrast={contrast}, Windows build={}\n",
-        accent_state(front),
-        windows_build_number()
-    ));
-    contrast
+    result
 }
 
 async fn settle(cx: &AsyncApp) {
@@ -159,6 +147,7 @@ async fn exercise(
     cx: &AsyncApp,
 ) -> Result<(), String> {
     settle(cx).await;
+    let mut policy_mismatch = None;
     for (opacity, label) in [(0.55, "none-55"), (1.0, "none-100"), (0.55, "none-55-restored")] {
         cx.update(|cx| {
             cx.global_mut::<VisualEffects>().opacity = opacity;
@@ -205,8 +194,9 @@ async fn exercise(
                 })
                 .unwrap()
         });
-        if accent != 2 {
-            return Err(format!("Transparent native accent was overwritten: {accent}"));
+        let contrast = contrast?;
+        if accent != Some(2) {
+            policy_mismatch = Some(format!("Transparent native accent was overwritten: {accent:?}"));
         }
         if (opacity < 1.0 && contrast < 60) || (opacity == 1.0 && contrast.abs() > 3) {
             return Err(format!("desktop transparency mismatch for {label}: {contrast}"));
@@ -237,7 +227,8 @@ async fn exercise(
             })
             .unwrap()
     });
-    if accent != 0 || contrast.abs() > 3 {
+    let contrast = contrast?;
+    if accent != Some(0) || contrast.abs() > 3 {
         return Err("Opaque appearance became transparent".into());
     }
     cx.update(|cx| {
@@ -266,7 +257,11 @@ async fn exercise(
             })
             .unwrap()
     });
-    if accent != 2 || contrast < 60 {
+    let contrast = contrast?;
+    if accent != Some(2) {
+        policy_mismatch = Some(format!("Transparent Mica fallback accent was overwritten: {accent:?}"));
+    }
+    if contrast < 60 {
         return Err("Transparent Mica fallback is opaque".into());
     }
     for mode in [BlurModeName::Acrylic, BlurModeName::Mica] {
@@ -288,13 +283,17 @@ async fn exercise(
                 })
                 .unwrap()
         });
+        let contrast = contrast?;
         if contrast < 60 {
             return Err(format!(
                 "material to None did not restore sharp transparency: {mode:?}, {contrast}"
             ));
         }
     }
-    Ok(())
+    match policy_mismatch {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
 }
 
 #[test]
