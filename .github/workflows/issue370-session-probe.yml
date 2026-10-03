@@ -1,0 +1,69 @@
+name: Issue 370 native Windows session diagnosis
+on:
+  push:
+    branches: [codex/issue-370-session-restore]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  restore:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 100
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          extra-key: '-release-check-v2'
+          target: target/ci
+          revision: dependencies-v1
+          save-if: 'false'
+      - name: Build current main product with native session tests
+        shell: pwsh
+        run: |
+          python scripts/check_architecture.py --base HEAD^
+          if ($LASTEXITCODE -ne 0) { throw 'Architecture failed' }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting failed' }
+          cargo build --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-shell
+          if ($LASTEXITCODE -ne 0) { throw 'Native product build failed' }
+          ./scripts/prepare-windows-runtime.ps1 -Destination target/ci -Architecture '${{ matrix.arch }}'
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-test-support session_persistence::
+          if ($LASTEXITCODE -ne 0) { throw 'Session persistence regression failed' }
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-test-support startup_tests::
+          if ($LASTEXITCODE -ne 0) { throw 'Startup policy regression failed' }
+      - name: Real native window close and cold restore as ordinary user
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory diagnostic-output -Force | Out-Null
+          git rev-parse HEAD | Set-Content diagnostic-output/source.txt
+          git rev-parse HEAD^ | Add-Content diagnostic-output/source.txt
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber | Out-File diagnostic-output/windows.txt
+          python scripts/conformance/windows_standard_user.py .github/review/issue370-session-probe.py target/ci/pebrel.exe diagnostic-output/native
+          if ($LASTEXITCODE -ne 0) { throw 'Native session diagnosis failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue370-${{ matrix.os }}
+          path: diagnostic-output
+          retention-days: 7
