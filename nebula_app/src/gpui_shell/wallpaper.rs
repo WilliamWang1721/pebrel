@@ -287,8 +287,8 @@ fn effective_material(runtime: &nebula_settings::RuntimeSettings) -> (f32, BlurM
 ///
 /// GPUI 的 Windows renderer 会按这个枚举选择清屏 alpha：`Opaque` 固定以
 /// alpha=1 清空交换链，场景中后续绘制的透明像素无法把它重新变透明。因此
-/// `None` 也必须保留透明交换链；紧随其后的 Windows 原生清理会关闭 WCA 与
-/// DWMSBT，最终语义是“窗口可透明，但没有任何模糊材质”。
+/// `None` 也必须保留透明交换链；原生清理关闭模糊与 DWMSBT，但保留 GPUI
+/// 的 WCA state 2，最终语义是“窗口可透明，但没有任何模糊材质”。
 ///
 /// # 哪些档位要窗口保持可透
 ///
@@ -420,24 +420,16 @@ fn apply_window_effects(cx: &mut App) {
     });
 }
 
-#[cfg(windows)]
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct AccentPolicy {
-    state: u32,
-    flags: u32,
-    gradient_color: u32,
-    animation_id: u32,
+#[cfg(all(test, windows))]
+thread_local! {
+    static TEST_NATIVE_ACCENTS: std::cell::RefCell<std::collections::HashMap<isize, u32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-#[cfg(windows)]
-#[repr(C)]
-struct WindowCompositionAttributeData {
-    attribute: u32,
-    data: *mut core::ffi::c_void,
-    size: usize,
+#[cfg(all(test, windows))]
+fn test_native_accent_state(hwnd: isize) -> Option<u32> {
+    TEST_NATIVE_ACCENTS.with(|states| states.borrow().get(&hwnd).copied())
 }
-
 
 /// 显式落下 Windows 材质属性。
 ///
@@ -445,7 +437,7 @@ struct WindowCompositionAttributeData {
 ///
 /// | 档位 | AccentPolicy | SYSTEMBACKDROP | DWM 每帧成本 |
 /// |---|---|---|---|
-/// | `None` | 全零 | `DWMSBT_NONE` | 无 |
+/// | `None` | Transparent 时 state 2，否则 state 0 | `DWMSBT_NONE` | 无 |
 /// | `Aero` | state 3 + 玻璃色调 | `DWMSBT_NONE` | 整窗实时玻璃模糊 |
 /// | `Mica` | 全零 | `DWMSBT_MAINWINDOW` | 系统壁纸 backdrop |
 /// | `Mica Alt` | 全零 | `DWMSBT_TABBEDWINDOW` | 强色调系统壁纸 backdrop |
@@ -482,6 +474,22 @@ fn apply_windows_accent_policy(
     };
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct AccentPolicy {
+        state: u32,
+        flags: u32,
+        gradient_color: u32,
+        animation_id: u32,
+    }
+
+    #[repr(C)]
+    struct WindowCompositionAttributeData {
+        attribute: u32,
+        data: *mut core::ffi::c_void,
+        size: usize,
+    }
+
     type SetWindowCompositionAttribute =
         unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> BOOL;
 
@@ -517,6 +525,10 @@ fn apply_windows_accent_policy(
             log::warn!("SetWindowCompositionAttribute({phase}) failed");
             return false;
         }
+        #[cfg(test)]
+        TEST_NATIVE_ACCENTS.with(|states| {
+            states.borrow_mut().insert(hwnd as isize, accent.state);
+        });
         true
     };
 
@@ -600,7 +612,12 @@ fn apply_windows_accent_policy(
         {
             AccentPolicy { state: 4, flags: 0, gradient_color: 0x0100_0000, animation_id: 0 }
         },
-        BlurModeName::Mica | BlurModeName::MicaAlt | BlurModeName::None => disabled_accent,
+        // GPUI's Transparent appearance enables state 2. Disabling it here
+        // discards its native transparency request while the scene carries alpha.
+        BlurModeName::Mica | BlurModeName::MicaAlt | BlurModeName::None => AccentPolicy {
+            state: if appearance == WindowBackgroundAppearance::Transparent { 2 } else { 0 },
+            ..disabled_accent
+        },
     };
 
     if !controller_available && !(system_material_requested && system_material_available) {
