@@ -420,6 +420,25 @@ fn apply_window_effects(cx: &mut App) {
     });
 }
 
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AccentPolicy {
+    state: u32,
+    flags: u32,
+    gradient_color: u32,
+    animation_id: u32,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct WindowCompositionAttributeData {
+    attribute: u32,
+    data: *mut core::ffi::c_void,
+    size: usize,
+}
+
+
 /// 显式落下 Windows 材质属性。
 ///
 /// # 五档各自写什么
@@ -462,22 +481,6 @@ fn apply_windows_accent_policy(
         SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
     };
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    struct AccentPolicy {
-        state: u32,
-        flags: u32,
-        gradient_color: u32,
-        animation_id: u32,
-    }
-
-    #[repr(C)]
-    struct WindowCompositionAttributeData {
-        attribute: u32,
-        data: *mut core::ffi::c_void,
-        size: usize,
-    }
 
     type SetWindowCompositionAttribute =
         unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> BOOL;
@@ -854,3 +857,7 @@ pub(crate) fn test_install_visual_effects(cx: &mut App, opacity: f32, blur: Blur
 pub(crate) fn test_apply_window_effects(cx: &mut App) {
     apply_window_effects(cx);
 }
+
+#[cfg(all(test, windows, feature = "gpui-test-support"))]
+#[path = "wallpaper/native_transparency_tests.rs"]
+mod native_transparency_tests;
