@@ -1,0 +1,68 @@
+name: Issue 177 Git Bash startup diagnostic
+
+on:
+  push:
+    branches: [diagnostic/issue177-git-bash-fetch]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2025
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        openconsole: ["on", "off"]
+    env:
+      RUST_BACKTRACE: "1"
+      NEBULA_BOOT_TRACE: "1"
+      PEBREL_CONFIG_DIR: ${{ github.workspace }}/diagnostic-config
+      PEBREL_177_EVIDENCE: ${{ github.workspace }}/diagnostic-output
+      PEBREL_177_BACKEND: ${{ matrix.openconsole }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Record the exact diagnostic and product source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory diagnostic-output, diagnostic-config -Force | Out-Null
+          if ((git rev-parse HEAD^) -ne '9dd3d6491bfaaf902a4a3a248c02f36a47abae2d') { throw 'Diagnostic must be a direct child of the pinned product source.' }
+          git rev-parse HEAD | Set-Content diagnostic-output/diagnostic-commit.txt
+          git rev-parse HEAD^ | Set-Content diagnostic-output/product-commit.txt
+          git diff HEAD^ HEAD -- | Set-Content diagnostic-output/diagnostic.patch
+          "fetch=1`npowerline=1`nopenconsole=${{ matrix.openconsole }}" | Set-Content diagnostic-config/pebrel_settings.txt
+          Get-ComputerInfo -Property WindowsProductName, WindowsVersion, OsBuildNumber | Format-List | Out-File diagnostic-output/windows.txt
+          & 'C:/Program Files/Git/bin/bash.exe' --version | Out-File diagnostic-output/bash-version.txt
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: core
+          target: target/ci
+          save-if: "false"
+      - name: Compile only the existing native terminal test crate
+        shell: pwsh
+        run: |
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula_terminal --lib --no-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare the same pinned runtime beside the native test executable
+        shell: pwsh
+        run: ./scripts/prepare-windows-runtime.ps1 -Destination target/ci/deps/runtime
+      - name: Observe actual ConPTY welcome and subsequent input
+        shell: pwsh
+        run: |
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula_terminal --lib git_bash_fetch_startup_diagnostic -- --ignored --nocapture --test-threads=1 2>&1 | Tee-Object diagnostic-output/native-log.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue177-git-bash-openconsole-${{ matrix.openconsole }}
+          path: diagnostic-output
+          if-no-files-found: error
+          retention-days: 7

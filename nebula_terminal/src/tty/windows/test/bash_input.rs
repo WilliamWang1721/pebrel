@@ -212,3 +212,156 @@ __nebula_precmd >/dev/null
 "#,
     );
 }
+
+// Fork-only observation, deliberately not a product regression assertion:
+// issue 177 has not yet been reproduced on current main. The command below
+// matches window_context/welcome.rs at product commit 9dd3d649 exactly.
+#[test]
+#[ignore = "fork-only issue 177 native startup evidence"]
+fn git_bash_fetch_startup_diagnostic() {
+    let program = super::nebula_find_bash().expect("native diagnostic requires Git Bash");
+    let evidence = std::path::PathBuf::from(
+        env::var_os("PEBREL_177_EVIDENCE").expect("diagnostic output directory"),
+    );
+    fs::create_dir_all(&evidence).unwrap();
+    let home = evidence.join("isolated-home");
+    fs::create_dir_all(&home).unwrap();
+    let welcome = b"clear; if command -v fastfetch >/dev/null 2>&1; then fastfetch; else printf '\\033[36mPebrel\\033[0m\\n'; uname -a; fi\n";
+    // Octal encoding keeps the marker out of the echoed input, so seeing the
+    // literal marker in PTY output proves shell execution, rather than echo.
+    let probe = b"printf '\\120\\105\\102\\122\\105\\114\\137\\117\\113\\137\\061\\067\\067\\n'\r";
+    let marker = b"PEBREL_OK_177";
+    for integrated in [true, false] {
+        for ready in [false, true] {
+            for carriage_return in [false, true] {
+                let label = format!(
+                    "{}-{}-{}",
+                    if integrated { "integrated" } else { "login-profile" },
+                    if ready { "after-readline" } else { "immediate" },
+                    if carriage_return { "cr" } else { "product-lf" },
+                );
+                let environment = HashMap::from([
+                    ("LC_ALL".into(), "C".into()),
+                    ("TERM".into(), "xterm-256color".into()),
+                    ("NEBULA_BASHRC_SOURCED".into(), "1".into()),
+                    ("INPUTRC".into(), "/dev/null".into()),
+                    ("HISTFILE".into(), "/dev/null".into()),
+                    ("HOME".into(), home.to_string_lossy().into_owned()),
+                ]);
+                let shell = if integrated {
+                    tty::bash_with_nebula_integration(program.clone(), Vec::new())
+                } else {
+                    tty::Shell::new(program.clone(), vec!["--login".into(), "-i".into()])
+                };
+                let options = tty::Options {
+                    shell: Some(shell),
+                    working_directory: Some(home.clone()),
+                    env: environment,
+                    ..Default::default()
+                };
+                let pty = tty::new(
+                    &options,
+                    WindowSize { num_lines: 40, num_cols: 120, cell_width: 8, cell_height: 16 },
+                    0,
+                )
+                .expect("create actual product ConPTY");
+                let replies = Replies::default();
+                let config = Config {
+                    suppress_bringup_da1: tty::conpty_sideload_enabled(),
+                    conpty_resize: true,
+                    ..Default::default()
+                };
+                let mut session = BashSession {
+                    pty,
+                    term: Term::new(config, &TermSize::new(120, 40), replies.clone()),
+                    parser: ansi::Processor::new(),
+                    replies,
+                };
+                let mut output = Vec::new();
+                let readiness_observed = ready && observe_until(
+                    &mut session,
+                    &mut output,
+                    Duration::from_secs(10),
+                    |term, _| term.mode().contains(crate::term::TermMode::BRACKETED_PASTE),
+                );
+                // Immediate is the existing product path: write before reading
+                // any shell output. The other cases isolate timing/terminator.
+                let mut input = welcome.to_vec();
+                if carriage_return {
+                    *input.last_mut().unwrap() = b'\r';
+                }
+                session.send(&input);
+                let welcome_observed = observe_until(
+                    &mut session,
+                    &mut output,
+                    Duration::from_secs(8),
+                    |term, _| diagnostic_rows(term).iter().any(|line| line.trim() == "Pebrel"),
+                );
+                let welcome_rows = diagnostic_rows(&session.term);
+                let before_probe = output.len();
+                session.send(probe);
+                let subsequent_command_executed = observe_until(
+                    &mut session,
+                    &mut output,
+                    Duration::from_secs(8),
+                    |_, bytes| bytes[before_probe..].windows(marker.len()).any(|part| part == marker),
+                );
+                let report = serde_json::json!({
+                    "product_commit": "9dd3d6491bfaaf902a4a3a248c02f36a47abae2d",
+                    "case": label,
+                    "backend_requested": env::var("PEBREL_177_BACKEND").unwrap(),
+                    "program": program,
+                    "readiness_observed": readiness_observed,
+                    "welcome_input_bytes": input,
+                    "welcome_observed": welcome_observed,
+                    "welcome_rows": welcome_rows,
+                    "probe_input_bytes": probe.as_slice(),
+                    "subsequent_command_executed": subsequent_command_executed,
+                    "final_rows": diagnostic_rows(&session.term),
+                    "pty_output_bytes": output,
+                });
+                fs::write(
+                    evidence.join(format!("{label}.json")),
+                    serde_json::to_vec_pretty(&report).unwrap(),
+                ).unwrap();
+                eprintln!("{label}: readiness={readiness_observed}, welcome={welcome_observed}, subsequent_command={subsequent_command_executed}");
+                session.send(b"\x03exit\r");
+            }
+        }
+    }
+}
+
+fn diagnostic_rows(term: &Term<Replies>) -> Vec<String> {
+    (0..40)
+        .map(|line| (0..120).map(|column| term.grid()[Line(line)][Column(column)].c).collect())
+        .collect()
+}
+
+fn observe_until(
+    session: &mut BashSession,
+    output: &mut Vec<u8>,
+    duration: Duration,
+    expected: impl Fn(&Term<Replies>, &[u8]) -> bool,
+) -> bool {
+    let deadline = Instant::now() + duration;
+    let mut buffer = [0; 8192];
+    while Instant::now() < deadline {
+        match session.pty.reader().read(&mut buffer) {
+            Ok(count) if count > 0 => {
+                output.extend_from_slice(&buffer[..count]);
+                session.parser.advance(&mut session.term, &buffer[..count]);
+                for reply in session.replies.0.lock().unwrap().drain(..) {
+                    write_pty(&mut session.pty, reply.as_bytes());
+                }
+                if expected(&session.term, output) {
+                    return true;
+                }
+            },
+            Ok(_) => (),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => (),
+            Err(error) => panic!("diagnostic PTY read failed: {error}"),
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    false
+}
