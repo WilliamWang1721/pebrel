@@ -1,0 +1,58 @@
+name: Issue 403 core proof and cost
+on:
+  push:
+    branches: [codex/issue-403-verify]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - name: Format production input files and retain the patch
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          cargo fmt --all
+          git diff --binary -- nebula_terminal/src/term > "$RUNNER_TEMP/report/format.patch"
+      - name: Run all core library regressions
+        run: |
+          cargo test --locked -p nebula_terminal --lib > "$RUNNER_TEMP/report/core-tests.log" 2>&1
+          cat "$RUNNER_TEMP/report/core-tests.log"
+      - name: Check architecture against exact upstream main
+        if: always()
+        run: python3 scripts/check_architecture.py --base 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+      - name: Compare instrumented release input cost with exact main
+        if: always()
+        run: |
+          cargo run --release --locked -p nebula_terminal --example issue403_cost > "$RUNNER_TEMP/report/feature-cost.jsonl" 2> "$RUNNER_TEMP/report/feature-build.log"
+          git worktree add --detach "$RUNNER_TEMP/base" 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+          mkdir -p "$RUNNER_TEMP/base/nebula_terminal/examples"
+          cp nebula_terminal/examples/issue403_cost.rs "$RUNNER_TEMP/base/nebula_terminal/examples/issue403_cost.rs"
+          cd "$RUNNER_TEMP/base"
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo run --release --locked -p nebula_terminal --example issue403_cost > "$RUNNER_TEMP/report/base-cost.jsonl" 2> "$RUNNER_TEMP/report/base-build.log"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path(os.environ['RUNNER_TEMP']) / 'report'
+          base = {x['case']: x for x in map(json.loads, (report/'base-cost.jsonl').read_text().splitlines())}
+          feature = {x['case']: x for x in map(json.loads, (report/'feature-cost.jsonl').read_text().splitlines())}
+          rows = [dict(case=label, ratio=data['ns_per_char']/base[label]['ns_per_char'], base=base[label], feature=data) for label,data in feature.items()]
+          result = json.dumps(rows, indent=2)
+          (report/'comparison.json').write_text(result)
+          print(result)
+          PY
+      - name: Publish source proof, format patch and costs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue403-proof
+          path: ${{ runner.temp }}/report
