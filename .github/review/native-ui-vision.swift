@@ -69,10 +69,12 @@ if args[1] == "--diff" {
             }
         }
     }
-    let result: [String: Any] = ["changed_pixels": count,
-        "bounds": [area.minX / scale + Double(minX) / scale,
-                   area.minY / scale + Double(a.height - maxY - 1) / scale,
-                   Double(maxX - minX + 1) / scale, Double(maxY - minY + 1) / scale]]
+    let changedBounds: [Double] = count == 0 ? [] : [
+        Double(area.minX) / scale + Double(minX) / scale,
+        Double(area.minY) / scale + Double(minY) / scale,
+        Double(maxX - minX + 1) / scale, Double(maxY - minY + 1) / scale,
+    ]
+    let result: [String: Any] = ["changed_pixels": count, "bounds": changedBounds]
     print(String(data: try JSONSerialization.data(withJSONObject: result), encoding: .utf8)!)
     exit(0)
 }
