@@ -1,7 +1,7 @@
 //! Opt-in real HWND/DWM acceptance: owned stripe backdrop, no shell or user data.
 use super::*;
-use gpui::{AppContext as _, AsyncApp, Context, Render, WindowBounds, WindowHandle, WindowOptions};
 use gpui::ParentElement as _;
+use gpui::{AppContext as _, AsyncApp, Context, Render, WindowBounds, WindowHandle, WindowOptions};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
@@ -11,42 +11,72 @@ use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetClientRect, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
 };
-use winit::raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
+use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-struct Surface { backdrop: bool }
+struct Surface {
+    backdrop: bool,
+}
 impl Render for Surface {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.backdrop {
-            gpui::canvas(|_, _, _| (), |bounds, _, window, _| {
-                let stripe = px(16.0 / window.scale_factor());
-                for index in 0..(bounds.size.width / stripe).ceil() as usize {
-                    let color = if index % 2 == 0 { gpui::white() } else { gpui::black() };
-                    window.paint_quad(fill(Bounds::new(
-                        bounds.origin + point(stripe * index as f32, px(0.0)),
-                        size(stripe, bounds.size.height),
-                    ), color));
-                }
-            }).size_full().into_any_element()
+            gpui::canvas(
+                |_, _, _| (),
+                |bounds, _, window, _| {
+                    let stripe = px(16.0 / window.scale_factor());
+                    for index in 0..(bounds.size.width / stripe).ceil() as usize {
+                        let color = if index % 2 == 0 { gpui::white() } else { gpui::black() };
+                        window.paint_quad(fill(
+                            Bounds::new(
+                                bounds.origin + point(stripe * index as f32, px(0.0)),
+                                size(stripe, bounds.size.height),
+                            ),
+                            color,
+                        ));
+                    }
+                },
+            )
+            .size_full()
+            .into_any_element()
         } else {
             let mut background = gpui::rgb(0x181818);
             background.a = window_opacity(cx);
-            div().size_full().relative().bg(background)
-                .child(div().absolute().left(px(64.0)).top(px(64.0)).size(px(32.0)).bg(gpui::rgb(0xff0000)))
+            div()
+                .size_full()
+                .relative()
+                .bg(background)
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(64.0))
+                        .top(px(64.0))
+                        .size(px(32.0))
+                        .bg(gpui::rgb(0xff0000)),
+                )
                 .into_any_element()
         }
     }
 }
 
 fn open(cx: &mut App, backdrop: bool) -> WindowHandle<Surface> {
-    cx.open_window(WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(120.0), px(120.0)), size(px(640.0), px(360.0))))),
-        window_background: WindowBackgroundAppearance::Transparent,
-        ..Default::default()
-    }, |_, cx| cx.new(|_| Surface { backdrop })).unwrap()
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                point(px(120.0), px(120.0)),
+                size(px(640.0), px(360.0)),
+            ))),
+            window_background: WindowBackgroundAppearance::Transparent,
+            ..Default::default()
+        },
+        |_, cx| cx.new(|_| Surface { backdrop }),
+    )
+    .unwrap()
 }
 
 fn hwnd(window: &Window) -> HWND {
-    let RawWindowHandle::Win32(handle) = HasWindowHandle::window_handle(window).unwrap().as_raw() else { panic!("Windows HWND required") };
+    let RawWindowHandle::Win32(handle) = HasWindowHandle::window_handle(window).unwrap().as_raw()
+    else {
+        panic!("Windows HWND required")
+    };
     handle.hwnd.get() as HWND
 }
 
@@ -62,11 +92,17 @@ fn accent_state(handle: HWND) -> u32 {
     type Getter = unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> i32;
     let getter: Getter = unsafe {
         let module = GetModuleHandleA(c"user32.dll".as_ptr() as *const u8);
-        let address = GetProcAddress(module, c"GetWindowCompositionAttribute".as_ptr() as *const u8).expect("native WCA readback must be available");
+        let address =
+            GetProcAddress(module, c"GetWindowCompositionAttribute".as_ptr() as *const u8)
+                .expect("native WCA readback must be available");
         std::mem::transmute(address)
     };
     let mut policy = AccentPolicy { state: 0, flags: 0, gradient_color: 0, animation_id: 0 };
-    let mut data = WindowCompositionAttributeData { attribute: 19, data: &mut policy as *mut _ as *mut core::ffi::c_void, size: std::mem::size_of::<AccentPolicy>() };
+    let mut data = WindowCompositionAttributeData {
+        attribute: 19,
+        data: &mut policy as *mut _ as *mut core::ffi::c_void,
+        size: std::mem::size_of::<AccentPolicy>(),
+    };
     assert_ne!(unsafe { getter(handle, &mut data) }, 0, "native accent readback failed");
     policy.state
 }
@@ -88,19 +124,28 @@ fn sample(backdrop: HWND, front: HWND, scale: f32, label: &str) -> i32 {
     let black = pixel(dc, x + 24, y);
     let opaque = pixel(dc, origin.x + (80.0 * scale) as i32, origin.y + (80.0 * scale) as i32);
     let mut image = image::RgbImage::new(32, 8);
-    for py in 0..8 { for px in 0..32 {
-        image.put_pixel(px, py, image::Rgb(pixel(dc, x + px as i32, y + py as i32)));
-    }}
+    for py in 0..8 {
+        for px in 0..32 {
+            image.put_pixel(px, py, image::Rgb(pixel(dc, x + px as i32, y + py as i32)));
+        }
+    }
     unsafe { ReleaseDC(std::ptr::null_mut(), dc) };
     if let Some(directory) = std::env::var_os("PEBREL_OPACITY_QA_OUTPUT") {
         let directory = std::path::PathBuf::from(directory);
         std::fs::create_dir_all(&directory).unwrap();
         image.save(directory.join(format!("{label}.png"))).unwrap();
     }
-    assert!(opaque[0] > 235 && opaque[1] < 20 && opaque[2] < 20, "opacity must not dim opaque content: {opaque:?}");
+    assert!(
+        opaque[0] > 235 && opaque[1] < 20 && opaque[2] < 20,
+        "opacity must not dim opaque content: {opaque:?}"
+    );
     let contrast = white.iter().map(|v| i32::from(*v)).sum::<i32>() / 3
         - black.iter().map(|v| i32::from(*v)).sum::<i32>() / 3;
-    eprintln!("native opacity ROI {label}: accent={}, white={white:?}, black={black:?}, contrast={contrast}, Windows build={}", accent_state(front), windows_build_number());
+    eprintln!(
+        "native opacity ROI {label}: accent={}, white={white:?}, black={black:?}, contrast={contrast}, Windows build={}",
+        accent_state(front),
+        windows_build_number()
+    );
     contrast
 }
 
@@ -108,55 +153,122 @@ async fn settle(cx: &AsyncApp) {
     cx.background_executor().timer(Duration::from_millis(250)).await;
 }
 
-async fn exercise(backdrop: WindowHandle<Surface>, front: WindowHandle<Surface>, cx: &AsyncApp) -> Result<(), String> {
+async fn exercise(
+    backdrop: WindowHandle<Surface>,
+    front: WindowHandle<Surface>,
+    cx: &AsyncApp,
+) -> Result<(), String> {
     settle(cx).await;
     for (opacity, label) in [(0.55, "none-55"), (1.0, "none-100"), (0.55, "none-55-restored")] {
         cx.update(|cx| {
             cx.global_mut::<VisualEffects>().opacity = opacity;
             apply_window_effects(cx);
-            backdrop.update(cx, |_, window, _| unsafe { SetWindowPos(hwnd(window), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); }).unwrap();
-            front.update(cx, |_, window, _| {
-                unsafe { SetWindowPos(hwnd(window), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); }
-                window.refresh();
-            }).unwrap();
+            backdrop
+                .update(cx, |_, window, _| unsafe {
+                    SetWindowPos(
+                        hwnd(window),
+                        HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                })
+                .unwrap();
+            front
+                .update(cx, |_, window, _| {
+                    unsafe {
+                        SetWindowPos(
+                            hwnd(window),
+                            HWND_TOPMOST,
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                        );
+                    }
+                    window.refresh();
+                })
+                .unwrap();
         });
         settle(cx).await;
         let (contrast, accent) = cx.update(|cx| {
             let back = backdrop.update(cx, |_, window, _| hwnd(window)).unwrap();
-            front.update(cx, |_, window, _| (sample(back, hwnd(window), window.scale_factor(), label), accent_state(hwnd(window)))).unwrap()
+            front
+                .update(cx, |_, window, _| {
+                    (
+                        sample(back, hwnd(window), window.scale_factor(), label),
+                        accent_state(hwnd(window)),
+                    )
+                })
+                .unwrap()
         });
-        if accent != 2 { return Err(format!("Transparent native accent was overwritten: {accent}")); }
+        if accent != 2 {
+            return Err(format!("Transparent native accent was overwritten: {accent}"));
+        }
         if (opacity < 1.0 && contrast < 60) || (opacity == 1.0 && contrast.abs() > 3) {
             return Err(format!("desktop transparency mismatch for {label}: {contrast}"));
         }
     }
     cx.update(|cx| {
-        front.update(cx, |_, window, _| {
-            window.set_background_appearance(WindowBackgroundAppearance::Opaque);
-            apply_windows_accent_policy(window, BlurModeName::None, WindowBackgroundAppearance::Opaque);
-            window.refresh();
-        }).unwrap();
+        front
+            .update(cx, |_, window, _| {
+                window.set_background_appearance(WindowBackgroundAppearance::Opaque);
+                apply_windows_accent_policy(
+                    window,
+                    BlurModeName::None,
+                    WindowBackgroundAppearance::Opaque,
+                );
+                window.refresh();
+            })
+            .unwrap();
     });
     settle(cx).await;
     let (contrast, accent) = cx.update(|cx| {
         let back = backdrop.update(cx, |_, window, _| hwnd(window)).unwrap();
-        front.update(cx, |_, window, _| (sample(back, hwnd(window), window.scale_factor(), "opaque-appearance"), accent_state(hwnd(window)))).unwrap()
+        front
+            .update(cx, |_, window, _| {
+                (
+                    sample(back, hwnd(window), window.scale_factor(), "opaque-appearance"),
+                    accent_state(hwnd(window)),
+                )
+            })
+            .unwrap()
     });
-    if accent != 0 || contrast.abs() > 3 { return Err("Opaque appearance became transparent".into()); }
+    if accent != 0 || contrast.abs() > 3 {
+        return Err("Opaque appearance became transparent".into());
+    }
     cx.update(|cx| {
-        front.update(cx, |_, window, _| {
-            window.set_background_appearance(WindowBackgroundAppearance::Transparent);
-            // Exercise the transparent fallback without pretending this runner is old Windows.
-            apply_windows_accent_policy(window, BlurModeName::Mica, WindowBackgroundAppearance::Transparent);
-            window.refresh();
-        }).unwrap();
+        front
+            .update(cx, |_, window, _| {
+                window.set_background_appearance(WindowBackgroundAppearance::Transparent);
+                // Exercise the transparent fallback without pretending this runner is old Windows.
+                apply_windows_accent_policy(
+                    window,
+                    BlurModeName::Mica,
+                    WindowBackgroundAppearance::Transparent,
+                );
+                window.refresh();
+            })
+            .unwrap();
     });
     settle(cx).await;
     let (contrast, accent) = cx.update(|cx| {
         let back = backdrop.update(cx, |_, window, _| hwnd(window)).unwrap();
-        front.update(cx, |_, window, _| (sample(back, hwnd(window), window.scale_factor(), "mica-transparent-fallback"), accent_state(hwnd(window)))).unwrap()
+        front
+            .update(cx, |_, window, _| {
+                (
+                    sample(back, hwnd(window), window.scale_factor(), "mica-transparent-fallback"),
+                    accent_state(hwnd(window)),
+                )
+            })
+            .unwrap()
     });
-    if accent != 2 || contrast < 60 { return Err("Transparent Mica fallback is opaque".into()); }
+    if accent != 2 || contrast < 60 {
+        return Err("Transparent Mica fallback is opaque".into());
+    }
     for mode in [BlurModeName::Acrylic, BlurModeName::Mica] {
         cx.update(|cx| {
             cx.global_mut::<VisualEffects>().blur = mode;
@@ -170,9 +282,17 @@ async fn exercise(backdrop: WindowHandle<Surface>, front: WindowHandle<Surface>,
         settle(cx).await;
         let contrast = cx.update(|cx| {
             let back = backdrop.update(cx, |_, window, _| hwnd(window)).unwrap();
-            front.update(cx, |_, window, _| sample(back, hwnd(window), window.scale_factor(), "material-to-none")).unwrap()
+            front
+                .update(cx, |_, window, _| {
+                    sample(back, hwnd(window), window.scale_factor(), "material-to-none")
+                })
+                .unwrap()
         });
-        if contrast < 60 { return Err(format!("material to None did not restore sharp transparency: {mode:?}, {contrast}")); }
+        if contrast < 60 {
+            return Err(format!(
+                "material to None did not restore sharp transparency: {mode:?}, {contrast}"
+            ));
+        }
     }
     Ok(())
 }
@@ -194,12 +314,14 @@ fn native_windows_none_opacity_preserves_transparent_composition() {
         cx.spawn(async move |cx| {
             *shared.borrow_mut() = Some(exercise(backdrop, front, cx).await);
             cx.update(|cx| cx.quit());
-        }).detach();
+        })
+        .detach();
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_secs(20)).await;
             watchdog.set(true);
             cx.update(|cx| cx.quit());
-        }).detach();
+        })
+        .detach();
     });
     drop(guard);
     assert!(!timed_out.get(), "native QA timed out");
