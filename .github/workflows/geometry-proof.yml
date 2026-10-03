@@ -1,0 +1,94 @@
+name: Window geometry proof
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        type: string
+        required: true
+        default: codex/issue-window-geometry
+permissions:
+  contents: read
+jobs:
+  formatting:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - run: |
+          git rev-parse HEAD
+          cargo fmt --all
+          git diff > formatted.diff
+          python3 scripts/check_architecture.py --base 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+          python3 scripts/check_platform_cfg.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geometry-formatting
+          path: formatted.diff
+  windows-proof:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          target: target/ci
+          revision: dependencies-v1
+          save-if: 'false'
+      - name: Before and after ordinary-window snapshot
+        shell: bash
+        env:
+          SOURCE: ${{ inputs.source }}
+          RUST_BACKTRACE: '1'
+        run: |
+          git rev-parse HEAD
+          python - <<'PY'
+          import pathlib, os
+          path = pathlib.Path('nebula_app/src/gpui_shell/workspace/windowing/transfer_tests.rs')
+          text = path.read_text()
+          marker = '#[gpui::test]\nfn ordinary_window_geometry_is_in_the_durable_snapshot'
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'geometry-fixture.rs').write_text('\n' + text[text.index(marker):])
+          PY
+          git checkout --force 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+          python - <<'PY'
+          import pathlib, os
+          path = pathlib.Path('nebula_app/src/gpui_shell/workspace/windowing/transfer_tests.rs')
+          path.write_text(path.read_text() + pathlib.Path(os.environ['RUNNER_TEMP'], 'geometry-fixture.rs').read_text())
+          PY
+          set +e
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support ordinary_window_geometry_is_in_the_durable_snapshot -- --nocapture > before.log 2>&1
+          before_status=$?
+          set -e
+          cat before.log
+          test "$before_status" -ne 0
+          python - <<'PY'
+          import pathlib
+          text = pathlib.Path('before.log').read_text(errors='replace')
+          assert 'ordinary window geometry must survive process exit' in text, 'Baseline must fail the behavior assertion, not compilation'
+          PY
+          git checkout --force "$SOURCE"
+          git rev-parse HEAD
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support ordinary_window_geometry_is_in_the_durable_snapshot -- --nocapture
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support startup_geometry -- --nocapture
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support session::window_layout -- --nocapture
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support gpui_shell::config::tests -- --nocapture
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geometry-before-log
+          path: before.log
