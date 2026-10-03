@@ -203,7 +203,10 @@ try:
         before = shot("01-scrollbar-always")
         settings()
         row = reveal("Scrollbar visibility")
-        hit("Always", lambda word: word["text"].strip() == "Always" and word["x"] > row["x"] and abs(word["y"] - row["y"]) < 28)
+        control = wait(lambda: find("Always", lambda word: word["text"].strip() == "Always" and
+                                    word["x"] > row["x"] and abs(word["y"] - row["y"]) < 28),
+                       "native scrollbar dropdown caption located")
+        click(bounds[0] + bounds[2] - 50, control["y"])
         hit("On hover")
         wait(lambda: saved("scrollbar_visibility") == "hover", "native dropdown persists hover")
         shot("02-scrollbar-native-setting")
