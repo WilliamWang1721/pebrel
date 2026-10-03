@@ -41,17 +41,24 @@ jobs:
           New-Item target/installer-tools -ItemType Directory -Force | Out-Null
           Invoke-WebRequest https://raw.githubusercontent.com/jrsoftware/issrc/c495623a97376d524f298b1b160e8fd612375c62/Files/Languages/ChineseSimplified.isl -OutFile target/installer-tools/ChineseSimplified.isl
           if ((Get-FileHash target/installer-tools/ChineseSimplified.isl -Algorithm SHA256).Hash -ne '6753BE2C5E2740D859900FD902824DB2EC568DA5C5B52486524C9762D778B0B0') { throw 'Translation hash mismatch.' }
+      - name: Add reviewed negative fixture to prior production head
+        shell: pwsh
+        run: |
+          git fetch origin 1ee5b9309a65b3ff2f1daf55711f962343f4c0d2
+          git show 1ee5b9309a65b3ff2f1daf55711f962343f4c0d2:scripts/tests/installer-context-menu-fixture.iss | Set-Content scripts/tests/installer-context-menu-fixture.iss -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'Regression fixture overlay failed.' }
       - name: Isolated registry and native installer UI
         shell: pwsh
         run: ./scripts/tests/installer-migration.tests.ps1 -InnoCompiler $env:ISCC_PATH
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: issue218-explorer-evidence-d74d66b1
+          name: issue218-wsl-structure-before-d74d66b1
           path: |
             source-head.txt
             tmp/**/result.txt
             tmp/**/choices-result.txt
+            tmp/**/wsl-structure-result.txt
             tmp/**/setup.log
             tmp/**/ui-result.txt
             tmp/**/ui-handle.txt
