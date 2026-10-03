@@ -1,0 +1,54 @@
+name: Issue 218 isolated Explorer validation
+on:
+  push:
+    branches: [codex/issue-218-validation]
+permissions:
+  contents: read
+jobs:
+  windows:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 5a4ecbc13b21a79b7102cff858311f10be37172f
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Source and architecture
+        shell: pwsh
+        run: |
+          git rev-parse HEAD | Set-Content source-head.txt
+          python scripts/check_architecture.py --base 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+          if ($LASTEXITCODE -ne 0) { throw 'Architecture contract failed.' }
+      - name: Prepare Inno compiler and pinned translation
+        shell: pwsh
+        run: |
+          $compiler = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $compiler) {
+            choco install innosetup --version=6.5.4 -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno installation failed.' }
+            $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          "ISCC_PATH=$compiler" | Out-File $env:GITHUB_ENV -Append
+          New-Item target/installer-tools -ItemType Directory -Force | Out-Null
+          Invoke-WebRequest https://raw.githubusercontent.com/jrsoftware/issrc/c495623a97376d524f298b1b160e8fd612375c62/Files/Languages/ChineseSimplified.isl -OutFile target/installer-tools/ChineseSimplified.isl
+          if ((Get-FileHash target/installer-tools/ChineseSimplified.isl -Algorithm SHA256).Hash -ne '6753BE2C5E2740D859900FD902824DB2EC568DA5C5B52486524C9762D778B0B0') { throw 'Translation hash mismatch.' }
+      - name: Isolated registry and native installer UI
+        shell: pwsh
+        run: ./scripts/tests/installer-migration.tests.ps1 -InnoCompiler $env:ISCC_PATH
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue218-explorer-evidence-5a4ecbc1
+          path: |
+            source-head.txt
+            tmp/**/result.txt
+            tmp/**/choices-result.txt
+            tmp/**/setup.log
+            tmp/**/ui-result.txt
+            tmp/**/ui-handle.txt
+            tmp/**/*.png
