@@ -1,0 +1,42 @@
+name: Issue 457 readonly Windows argument review
+on:
+  push:
+    branches: [codex/issue-457-readonly-probe]
+permissions:
+  contents: read
+jobs:
+  windows:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d06417806a794681a0b8e6f48e0564a67a11d1e7
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Readonly native argv probe
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'resume-argv-review'
+          New-Item $root -ItemType Directory -Force | Out-Null
+          Set-Content (Join-Path $root 'argv.py') 'import sys,json; print(json.dumps(sys.argv[1:]))' -Encoding utf8
+          @'
+          $python = $env:REVIEW_PYTHON
+          $script = $env:REVIEW_ARGV_SCRIPT
+          & $python $script --config 'model_provider="custom"' 'a"b' 'a b\'
+          '@ | Set-Content (Join-Path $root 'generated-command.ps1') -Encoding utf8
+          $env:REVIEW_PYTHON = (Get-Command python).Source
+          $env:REVIEW_ARGV_SCRIPT = Join-Path $root 'argv.py'
+          $expected = @('--config', 'model_provider="custom"', 'a"b', 'a b\')
+          $windowsPs = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'generated-command.ps1')
+          $pwsh = & pwsh.exe -NoProfile -File (Join-Path $root 'generated-command.ps1')
+          $source = Get-Content nebula_app/src/agent_resume.rs -Raw
+          if ($source -notmatch 'drop_text_for_paths\(&args, shell\)') { throw 'Reviewed adapter no longer matches the quoted probe.' }
+          [ordered]@{ reviewHead = (git rev-parse HEAD); expected = $expected; windowsPowerShell = $windowsPs; powerShell7 = $pwsh; note = 'Uses the exact single-quoted command syntax emitted by the reviewed PowerShell adapter; native argv only, not provider CLI acceptance.' } | ConvertTo-Json -Depth 4 | Tee-Object -FilePath (Join-Path $root 'report.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr457-argv-readonly-d0641780
+          path: ${{ runner.temp }}/resume-argv-review
