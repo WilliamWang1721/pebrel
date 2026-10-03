@@ -1,0 +1,83 @@
+name: Issue 195 Windows PowerShell UNC startup proof
+
+on:
+  push:
+    branches: [codex/issue195-native-evidence]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unc-surrogate:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reproduce CMD fallback on a disposable localhost UNC share
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/issue195-surrogate" | Out-Null
+          "UNC transport surrogate; this does not exercise a WSL guest." | Set-Content "$env:RUNNER_TEMP/issue195-surrogate/scope.txt"
+          & .github/review/issue195-unc.ps1 | Tee-Object -FilePath "$env:RUNNER_TEMP/issue195-surrogate/result.jsonl"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue195-unc-surrogate
+          path: ${{ runner.temp }}/issue195-surrogate
+          if-no-files-found: error
+          retention-days: 7
+
+  native-regressions:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: 7cf0828578b6dab6750072edc9277f9826b2904b
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: candidate -> target
+          save-if: "false"
+      - name: Record the exact tested source and shell versions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/issue195-native" | Out-Null
+          git -C candidate rev-parse HEAD | Set-Content "$env:RUNNER_TEMP/issue195-native/source-head.txt"
+          & powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | Set-Content "$env:RUNNER_TEMP/issue195-native/powershell-version.txt"
+          & pwsh.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | Set-Content "$env:RUNNER_TEMP/issue195-native/pwsh-version.txt"
+      - name: Test prepared startup cwd and real PowerShell CMD launchers
+        working-directory: candidate
+        shell: pwsh
+        run: |
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-test-support platform::shell::tests:: -- --nocapture 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/issue195-native/tests.txt"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue195-native-startup
+          path: ${{ runner.temp }}/issue195-native
+          if-no-files-found: error
+          retention-days: 7
