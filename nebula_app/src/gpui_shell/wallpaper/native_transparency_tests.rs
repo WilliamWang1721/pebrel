@@ -141,11 +141,11 @@ fn sample(backdrop: HWND, front: HWND, scale: f32, label: &str) -> i32 {
     );
     let contrast = white.iter().map(|v| i32::from(*v)).sum::<i32>() / 3
         - black.iter().map(|v| i32::from(*v)).sum::<i32>() / 3;
-    eprintln!(
-        "native opacity ROI {label}: accent={}, white={white:?}, black={black:?}, contrast={contrast}, Windows build={}",
+    crate::gpui_shell::try_write_stderr(format_args!(
+        "native opacity ROI {label}: accent={}, white={white:?}, black={black:?}, contrast={contrast}, Windows build={}\n",
         accent_state(front),
         windows_build_number()
-    );
+    ));
     contrast
 }
 
