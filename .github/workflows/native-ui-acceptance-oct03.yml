@@ -1,0 +1,71 @@
+name: October PR native UI evidence
+on:
+  push:
+    branches: [codex/native-ui-acceptance-oct03]
+    paths: [.github/workflows/native-ui-acceptance-oct03.yml, .github/review/native-pr-acceptance.py, .github/review/native-ui-vision.swift]
+permissions:
+  contents: read
+concurrency:
+  group: october-native-ui-evidence
+  cancel-in-progress: true
+jobs:
+  macos:
+    name: Native UI PR ${{ matrix.pr }}
+    runs-on: macos-26
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: 443
+            scenario: theme
+            sha: 8042090da44fa6e9324595fa9862780a2d6aaa53
+          - pr: 445
+            scenario: line-height
+            sha: 6d8c6f50b5eff98941b2fa57a224d74af7a2bf5c
+          - pr: 447
+            scenario: scrollbar
+            sha: 81bf4f361cba840a6f3d09894ca76c3ed2041ad2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: WilliamWang1721/pebrel
+          ref: ${{ matrix.sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.97.1'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ready-native-interface
+          workspaces: candidate -> target
+          cache-on-failure: true
+      - uses: actions/cache/restore@v4
+        id: binary
+        with:
+          path: candidate/target/ci/pebrel
+          key: native-ui-binary-v1-macos26-rust1.97.1-gpui-ci-${{ runner.arch }}-${{ matrix.sha }}
+      - name: Build exact PR head
+        if: steps.binary.outputs.cache-hit != 'true'
+        working-directory: candidate
+        run: cargo build --locked --config .github/ci-profile.toml --profile ci -p nebula --bin pebrel --features gpui-shell
+      - uses: actions/cache/save@v4
+        if: steps.binary.outputs.cache-hit != 'true'
+        with:
+          path: candidate/target/ci/pebrel
+          key: ${{ steps.binary.outputs.cache-primary-key }}
+      - name: Native input, screenshot and behavioral evidence
+        run: python3 .github/review/native-pr-acceptance.py '${{ matrix.scenario }}' "$PWD/candidate/target/ci/pebrel" "$PWD/candidate" '${{ matrix.sha }}' "$RUNNER_TEMP/native-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ui-pr-${{ matrix.pr }}-${{ matrix.sha }}
+          path: |
+            ${{ runner.temp }}/native-evidence/acceptance.json
+            ${{ runner.temp }}/native-evidence/*.png
+          retention-days: 7
+          if-no-files-found: error
