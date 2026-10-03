@@ -12,6 +12,8 @@ jobs:
     env:
       PYTHONUTF8: "1"
     steps:
+      - name: Preserve repository LF source files on the Windows runner
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
