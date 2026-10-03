@@ -25,6 +25,8 @@ prototypes = {
     "EnumWindows": (wt.BOOL, [ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM), wt.LPARAM]),
     "GetWindowThreadProcessId": (wt.DWORD, [wt.HWND, ctypes.POINTER(wt.DWORD)]),
     "IsWindowVisible": (wt.BOOL, [wt.HWND]),
+    "GetWindowRect": (wt.BOOL, [wt.HWND, ctypes.POINTER(wt.RECT)]),
+    "GetCursorPos": (wt.BOOL, [ctypes.POINTER(wt.POINT)]),
     "GetClientRect": (wt.BOOL, [wt.HWND, ctypes.POINTER(wt.RECT)]),
     "ClientToScreen": (wt.BOOL, [wt.HWND, ctypes.POINTER(wt.POINT)]),
     "SetForegroundWindow": (wt.BOOL, [wt.HWND]),
@@ -57,6 +59,20 @@ def shot(name):
                              "-Shot", str(output / (name + ".png"))], capture_output=True, text=True)
     require(result.returncode == 0, "screenshot failed: " + result.stdout + result.stderr)
     require((output / (name + ".png")).is_file(), "screenshot missing")
+    bounds, client, pointer = wt.RECT(), wt.POINT(), wt.POINT()
+    require(user.GetWindowRect(hwnd, ctypes.byref(bounds)), "screenshot window bounds unavailable")
+    require(user.ClientToScreen(hwnd, ctypes.byref(client)), "screenshot client origin unavailable")
+    require(user.GetCursorPos(ctypes.byref(pointer)), "screenshot pointer position unavailable")
+    report.setdefault("screenshots", {})[name] = {
+        "window_rect": [bounds.left, bounds.top, bounds.right, bounds.bottom],
+        "client_origin": [client.x, client.y],
+        "cursor_screen": [pointer.x, pointer.y],
+        "planned_grip_points_in_image": {
+            "source": [start[0] - bounds.left, start[1] - bounds.top],
+            "target": [target[0] - bounds.left, target[1] - bounds.top],
+        },
+        "capture_output": result.stdout.strip(),
+    }
 
 
 def move(point):
@@ -119,7 +135,9 @@ try:
         markers[pane] = f"ISSUE355_PANE_{pane}_READY"
         ctx.prompt(ctx.marker_command(f"ISSUE355_PANE_{pane}_", "READY"), pane)
         ctx.wait_for_line(re.compile(markers[pane]), pane)
-    ctx.api("window.focus", {"window_id": ctx.window_id, "pane_id": ids[0]})
+    ctx.api("window.focus", {"window_id": ctx.window_id, "pane_id": ids[1]})
+    ctx.poll(lambda: ctx.tab_for_pane(ctx.snapshot(), ids[0])["focused_pane_id"],
+             lambda pane: pane == ids[1], "control focus did not move away from the source")
     pid = ctx.snapshot()["process_id"]
     windows = []
     def collect(handle, _):
@@ -136,6 +154,7 @@ try:
     require(user.SetWindowPos(hwnd, None, 60, 60, 1280, 800, 0x0040), "could not size fixture window")
     user.SetForegroundWindow(hwnd)
     ctx.poll(user.GetForegroundWindow, lambda handle: handle == hwnd, "could not foreground fixture")
+    time.sleep(0.6)
     rect, origin = wt.RECT(), wt.POINT()
     require(user.GetClientRect(hwnd, ctypes.byref(rect)), "client bounds unavailable")
     require(user.ClientToScreen(hwnd, ctypes.byref(origin)), "client origin unavailable")
@@ -144,11 +163,14 @@ try:
     # Runtime layout assertions below fail if native input misses the real grip.
     start = (origin.x + int(rect.right * 0.20), origin.y + round(60 * scale))
     target = (origin.x + int(rect.right * 0.82), start[1])
-    report.update(client_bounds=[rect.right, rect.bottom], dpi=round(scale * 96),
+    report.update(client_bounds=[rect.right, rect.bottom], client_origin=[origin.x, origin.y],
+                  planned_grip_screen={"source": start, "target": target}, dpi=round(scale * 96),
                   pane_ids=ids, shell_pids_before=roots)
-    time.sleep(0.6)
     shot("before")
     down(start)
+    ctx.poll(lambda: ctx.tab_for_pane(ctx.snapshot(), ids[0])["focused_pane_id"],
+             lambda pane: pane == ids[0], "native source grip press did not acquire focus")
+    checks.append("native source grip press acquired source focus")
     move(target)
     shot("hover-target")
     key(0x1B)

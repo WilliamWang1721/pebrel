@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 60
     env:
       PYTHONUTF8: "1"
-      CANDIDATE_HEAD: 649f91758c2c1f7d1273965b14e0b9be7ece3b05
+      CANDIDATE_HEAD: 3e827fa2947e76259ae4d96d39992ede68bf0a19
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: WilliamWang1721/pebrel
-          ref: 649f91758c2c1f7d1273965b14e0b9be7ece3b05
+          ref: 3e827fa2947e76259ae4d96d39992ede68bf0a19
           path: candidate
           persist-credentials: false
       - uses: actions/setup-python@v5
