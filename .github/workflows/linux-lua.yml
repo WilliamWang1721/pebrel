@@ -6,6 +6,9 @@ on:
         type: string
         required: true
         default: codex/issue-window-geometry
+      format_only:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -33,6 +36,7 @@ jobs:
           name: geometry-formatting
           path: formatted.diff
   windows-proof:
+    if: ${{ !inputs.format_only }}
     runs-on: windows-2025
     timeout-minutes: 120
     steps:
@@ -50,6 +54,9 @@ jobs:
           target: target/ci
           revision: dependencies-v1
           save-if: 'false'
+      - name: Prepare existing Windows console runtime
+        shell: pwsh
+        run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture x64
       - name: Before and after ordinary-window snapshot
         shell: bash
         env:
@@ -87,6 +94,7 @@ jobs:
           cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support startup_geometry -- --nocapture
           cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support session::window_layout -- --nocapture
           cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support gpui_shell::config::tests -- --nocapture
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --features gpui-test-support platform::startup::geometry_tests -- --nocapture
       - uses: actions/upload-artifact@v4
         if: always()
         with:
