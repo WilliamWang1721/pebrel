@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 5a4ecbc13b21a79b7102cff858311f10be37172f
+          ref: a80783a593014ce01fdcc98e6959d0a9a554d213
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -24,6 +24,8 @@ jobs:
           git rev-parse HEAD | Set-Content source-head.txt
           python scripts/check_architecture.py --base 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
           if ($LASTEXITCODE -ne 0) { throw 'Architecture contract failed.' }
+          python -m unittest scripts.tests.test_pebrel_branding scripts.tests.test_windows_resources scripts.tests.test_app_icons scripts.tests.test_ai_session_probe
+          if ($LASTEXITCODE -ne 0) { throw 'Compatibility tests failed.' }
       - name: Prepare Inno compiler and pinned translation
         shell: pwsh
         run: |
@@ -43,7 +45,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: issue218-explorer-evidence-5a4ecbc1
+          name: issue218-explorer-evidence-a80783a5
           path: |
             source-head.txt
             tmp/**/result.txt
