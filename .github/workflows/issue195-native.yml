@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: WilliamWang1721/pebrel
-          ref: 7cf0828578b6dab6750072edc9277f9826b2904b
+          ref: 3b24212cf17b0532ade978226f80e7234e2d9993
           path: candidate
           persist-credentials: false
       - uses: actions/setup-python@v5

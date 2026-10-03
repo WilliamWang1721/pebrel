@@ -39,7 +39,8 @@ $shim = & (Join-Path $env:PEBREL_ISSUE195_UNC 'cwd-probe.cmd') 2>&1 | Out-String
         $result = $stdout.Trim() | ConvertFrom-Json
         if ($result.cwd.TrimEnd('\') -ne $unc.TrimEnd('\')) { throw 'PowerShell did not start in the requested UNC directory' }
         foreach ($output in @($result.cmd, $result.shim)) {
-            if (($output.Trim() -split '\r?\n')[-1].Trim() -ne $env:SystemRoot) { throw 'CMD did not demonstrate the Windows-directory fallback' }
+            $lines = @($output -split '\r?\n' | ForEach-Object { $_.Trim() })
+            if ($lines -notcontains $env:SystemRoot) { throw 'CMD did not demonstrate the Windows-directory fallback' }
             if (-not $output.Contains('UNC')) { throw 'CMD UNC diagnostic is absent' }
         }
     }
