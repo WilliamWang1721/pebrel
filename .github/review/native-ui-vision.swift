@@ -10,10 +10,25 @@ func frame(_ path: String) -> CGImage {
 }
 let args = CommandLine.arguments
 let display = CGDisplayBounds(CGMainDisplayID())
-if args[1] == "--move" || args[1] == "--scroll" {
+if args[1] == "--move" || args[1] == "--scroll" || args[1] == "--click" {
     guard CGPreflightPostEventAccess() else { fatalError("native event posting permission unavailable") }
     let point = CGPoint(x: Double(args[2])!, y: Double(args[3])!)
     CGWarpMouseCursorPosition(point)
+    if args[1] == "--click" {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let moved = CGEvent(mouseEventSource: source, mouseType: .mouseMoved,
+                            mouseCursorPosition: point, mouseButton: .left)!
+        moved.post(tap: .cgSessionEventTap)
+        Thread.sleep(forTimeInterval: 0.2)
+        for type in [CGEventType.leftMouseDown, CGEventType.leftMouseUp] {
+            let click = CGEvent(mouseEventSource: source, mouseType: type,
+                                mouseCursorPosition: point, mouseButton: .left)!
+            click.setIntegerValueField(.mouseEventClickState, value: 1)
+            click.post(tap: .cgSessionEventTap)
+            Thread.sleep(forTimeInterval: 0.12)
+        }
+        exit(0)
+    }
     let event: CGEvent
     if args[1] == "--scroll" {
         event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,

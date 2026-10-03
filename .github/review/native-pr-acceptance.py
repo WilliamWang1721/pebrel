@@ -51,9 +51,8 @@ def key(text, modifiers="command down"):
     time.sleep(.6)
 
 def click(x, y):
-    move(x, y)
-    apple(f'click at {{{round(x)}, {round(y)}}}')
-    actions.append({"click": [x, y]})
+    run([str(helper), "--click", str(x), str(y)])
+    actions.append({"click": [x, y], "source": "CoreGraphics move/down/up across frames"})
     time.sleep(.5)
 
 def move(x, y):
@@ -203,10 +202,30 @@ try:
         before = shot("01-scrollbar-always")
         settings()
         row = reveal("Scrollbar visibility")
+        baseline = reveal("Font ligatures")
+        on = wait(lambda: find("On", lambda word: word["text"].strip() == "On" and
+                               abs(word["y"] - baseline["y"]) < 30 and word["x"] > baseline["x"]),
+                  "existing ligature dropdown located")
+        click(bounds[0] + bounds[2] - 50, on["y"])
+        existing_open = find("Off", lambda word: word["text"].strip() == "Off")
+        report["existing_ligature_mouse_dropdown_open"] = bool(existing_open)
+        shot("02-existing-ligature-mouse-probe")
+        if existing_open:
+            apple("key code 53")
+            actions.append({"key_code": 53})
+            time.sleep(.6)
+        row = reveal("Scrollbar visibility")
         control = wait(lambda: find("Always", lambda word: word["text"].strip() == "Always" and
                                     word["x"] > row["x"] and abs(word["y"] - row["y"]) < 28),
                        "native scrollbar dropdown caption located")
         click(bounds[0] + bounds[2] - 50, control["y"])
+        observed_menu = find("On hover")
+        report["scrollbar_mouse_dropdown_open"] = bool(observed_menu)
+        shot("02-scrollbar-mouse-menu")
+        if not observed_menu:
+            apple("key code 36")
+            actions.append({"key_code": 36})
+            time.sleep(.6)
         apple("key code 126")
         actions.append({"key_code": 126})
         time.sleep(.6)
@@ -234,6 +253,8 @@ try:
         report["scrollbar_right_edge_region_points"] = area
         report["scrollbar_changes"] = {"always_to_away": hidden, "away_to_hover": shown, "away_to_left": settled}
         checks.append("only the native terminal right edge changes on hover and clears on leave")
+        report["keyboard_and_hover_passed"] = True
+        assert observed_menu, "keyboard and hover passed, but the native mouse dropdown opening remains unverified"
     else:
         raise ValueError(scenario)
     report["passed"] = True
