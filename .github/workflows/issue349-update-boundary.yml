@@ -1,0 +1,67 @@
+name: Issue 349 Windows update instance diagnosis
+on:
+  push:
+    branches: [codex/issue-349-update-instance]
+permissions:
+  contents: read
+jobs:
+  windows:
+    if: github.repository == 'WilliamWang1721/pebrel'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+          components: rustfmt
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          extra-key: -release-check-v2
+          target: target/ci
+          revision: dependencies-v1
+          save-if: "false"
+      - name: Prepare the pinned Windows runtime
+        shell: pwsh
+        run: ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost
+      - name: Format and architecture checks
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/check_architecture.py --base 9dd3d6491bfaaf902a4a3a248c02f36a47abae2d
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Compile actual product test entry points
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force tmp | Out-Null
+          cargo test --config .github/ci-profile.toml --profile ci --locked -p nebula --bin pebrel --features gpui-test-support --no-run --message-format=json > tmp/issue349-build.jsonl
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Elevated instance must reject both entries before update IO
+        env:
+          PEBREL_349_EXPECT_ELEVATED: "1"
+        run: python scripts/tests/issue349_token_probe.py tmp/issue349-build.jsonl
+      - name: Ordinary instance must schedule and reach the installation check
+        env:
+          PEBREL_349_EXPECT_ELEVATED: "0"
+        run: python scripts/conformance/windows_standard_user.py scripts/tests/issue349_token_probe.py tmp/issue349-build.jsonl
+      - name: Existing native installation transaction fixtures
+        shell: pwsh
+        run: ./scripts/tests/test_update_handoff.ps1 -OutputRoot "$env:RUNNER_TEMP/issue349-handoff"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue349-update-boundary
+          path: |
+            tmp/issue349-build.jsonl
+            ${{ runner.temp }}/issue349-handoff/results.json
+          retention-days: 7

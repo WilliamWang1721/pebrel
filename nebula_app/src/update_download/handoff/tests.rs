@@ -1,5 +1,80 @@
 use super::*;
 
+#[cfg(windows)]
+#[test]
+#[ignore = "fork-only issue 349 probe requires both ordinary and elevated Windows tokens"]
+fn issue349_real_token_update_boundary() {
+    use sha2::{Digest as _, Sha256};
+    const CHILD: &str = "PEBREL_349_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let executable = std::env::current_exe().unwrap();
+        let root = tempfile::tempdir_in(executable.parent().unwrap()).unwrap();
+        let child = root.path().join("instance.exe");
+        std::fs::hard_link(executable, &child).unwrap();
+        let config = root.path().join("config");
+        std::fs::create_dir(&config).unwrap();
+        let output = std::process::Command::new(child)
+            .args([
+                "--ignored",
+                "--exact",
+                "update_download::handoff::tests::issue349_real_token_update_boundary",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("PEBREL_CONFIG_DIR", &config)
+            .env("NEBULA_CONFIG_DIR", &config)
+            .output()
+            .unwrap();
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        return;
+    }
+    let expected = std::env::var("PEBREL_349_EXPECT_ELEVATED").unwrap() == "1";
+    let elevated = crate::platform::elevation::is_elevated().unwrap();
+    println!("actual TokenElevation={elevated}; expected={expected}");
+    assert_eq!(elevated, expected);
+    assert_eq!(crate::platform::elevation::requires_isolation(), expected);
+    assert_eq!(
+        crate::platform::distribution::current(),
+        crate::platform::distribution::Distribution::Direct
+    );
+    let bytes = b"MZissue349 fixture; never executed";
+    let name = "Pebrel-v99.0.0-windows-x64-setup.exe";
+    let asset = UpdateAsset {
+        version: "99.0.0".into(),
+        name: name.into(),
+        download_url: format!("https://github.com/Kuddev/pebrel/releases/download/v99.0.0/{name}"),
+        size: Some(bytes.len() as u64),
+        sha256: Some(Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()),
+    };
+    let config = nebula_settings::settings_dir();
+    if elevated {
+        assert!(schedule(&asset).unwrap_err().contains("ordinary Pebrel window"));
+        let error = prepare(&asset).err().expect("elevated preparation must fail");
+        assert!(error.contains("privileged sessions stay isolated"));
+        assert!(
+            !config.join("updates").exists(),
+            "privileged entry points wrote ordinary update data"
+        );
+    } else {
+        let (_, path) = super::super::download_paths(&asset).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        *super::super::session() = Some(super::super::DownloadSession {
+            generation: 1,
+            asset: asset.clone(),
+            status: super::super::DownloadStatus::Ready { path, bytes: bytes.len() as u64 },
+        });
+        schedule(&asset).unwrap();
+        let scheduled: UpdateAsset = read_json(&config.join("updates/install-next.json")).unwrap();
+        assert_eq!(scheduled, asset);
+        // The isolated copy has no uninstaller marker: preparation must reach
+        // the installation check, rather than misclassifying this real token.
+        let error = prepare(&asset).err().expect("portable fixture must not install");
+        assert!(error.contains("This copy is portable"), "{error}");
+        assert!(!config.join("updates/handoffs").exists());
+    }
+}
+
 #[test]
 fn update_restore_tickets_cover_success_rollback_and_acknowledgement() {
     // Run in a separate process: changing the settings environment in the shared
