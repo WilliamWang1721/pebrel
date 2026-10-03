@@ -45,15 +45,16 @@ def instrument(evidence):
         if modified.count(anchor) != expected:
             raise RuntimeError("unexpected fixture anchor: " + anchor)
         indent = anchor[:len(anchor) - len(anchor.lstrip())]
-        modified = modified.replace(anchor, indent + f'eprintln!("[pr455] {message}");\n' + anchor)
+        marker = f'crate::gpui_shell::try_write_stderr(format_args!("[pr455] {message}"));'
+        modified = modified.replace(anchor, indent + marker + "\n" + anchor)
     entry = f"#[gpui::test]\nfn {NAME}(cx: &mut TestAppContext) {{"
     if modified.count(entry) != 1:
         raise RuntimeError("unexpected GPUI test entry")
     wrapper = f'''#[test]
 fn {NAME}() {{
-    eprintln!("[pr455] wrapper enter");
+    crate::gpui_shell::try_write_stderr(format_args!("[pr455] wrapper enter"));
     diagnostic_gpui_duplicate();
-    eprintln!("[pr455] GPUI macro and teardown returned");
+    crate::gpui_shell::try_write_stderr(format_args!("[pr455] GPUI macro and teardown returned"));
 }}
 
 #[gpui::test]
@@ -62,7 +63,7 @@ fn diagnostic_gpui_duplicate(cx: &mut TestAppContext) {{'''
     modified = modified.replace(
         "    window.update(|window, cx| window.draw(cx).clear(cx));\n}",
         '    window.update(|window, cx| window.draw(cx).clear(cx));\n'
-        '    eprintln!("[pr455] body finished; GPUI macro teardown follows");\n}',
+        '    crate::gpui_shell::try_write_stderr(format_args!("[pr455] body finished; GPUI macro teardown follows"));\n}',
     )
     assertion_prefixes = ("assert!(", "assert_eq!(", "assert_ne!(")
     assertions = [line.strip() for line in original.splitlines()
