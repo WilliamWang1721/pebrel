@@ -1,0 +1,27 @@
+name: Evidence settings width screenshots
+on:
+  push:
+    branches: ["evidence/settings-width-*"]
+permissions:
+  contents: read
+jobs:
+  shots:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - name: Build
+        run: cargo build --locked -p nebula --bin pebrel --features gpui-test-support,gpui_platform/test-support
+      - name: Render settings pages
+        run: PEBREL_WIDTH_SNAPSHOT_DIR="$PWD/shots" ./target/debug/pebrel
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: settings-width-${{ github.sha }}
+          path: shots
+          if-no-files-found: warn

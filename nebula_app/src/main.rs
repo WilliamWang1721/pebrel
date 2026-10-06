@@ -170,6 +170,12 @@ use crate::macos::locale;
 use crate::polling::{IoListener, ipc};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Evidence-only screenshot harness (throwaway branch).
+    #[cfg(all(target_os = "macos", feature = "gpui-test-support"))]
+    if let Some(dir) = std::env::var_os("PEBREL_WIDTH_SNAPSHOT_DIR") {
+        gpui_shell::settings_pane::width_snapshot::run(std::path::Path::new(&dir));
+        return Ok(());
+    }
     #[cfg(all(target_os = "macos", feature = "gpui-shell"))]
     if let Some(code) = update_download::handoff::macos::run_helper_if_requested() {
         std::process::exit(code);

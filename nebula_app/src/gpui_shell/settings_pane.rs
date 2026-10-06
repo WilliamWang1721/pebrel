@@ -1839,5 +1839,8 @@ impl Render for SettingsPane {
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "gpui-test-support")]
+pub(crate) mod width_snapshot;
+
 #[cfg(test)]
 mod appearance_picker_tests;
