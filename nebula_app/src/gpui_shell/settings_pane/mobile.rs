@@ -502,3 +502,53 @@ impl SettingsPane {
         });
     }
 }
+
+#[cfg(feature = "gpui-test-support")]
+impl SettingsPane {
+    /// Evidence-only fixture: LAN pairing invitation, optionally with one paired phone.
+    pub(super) fn evidence_mobile(
+        &mut self,
+        paired: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::mobile_connection::{ConnectionSnapshot, DeviceSummary};
+        let invitation = serde_json::json!({
+            "fixture": "complete invitation", "secure": { "expiresAt": now() + 600 }
+        })
+        .to_string();
+        self.mobile.initialized = true;
+        self.mobile.display_snapshot(Snapshot {
+            preferences: Preferences { enabled: true, ..Default::default() },
+            lan: Some(ConnectionSnapshot {
+                status: Status::Waiting,
+                invitation: Some(invitation),
+                address: "wss://192.0.2.1:4567".into(),
+                pairing_code: Some("48271936".into()),
+                discoverable: true,
+            }),
+            relay: None,
+            devices: if paired {
+                vec![DeviceSummary {
+                    id: "fixture-phone".into(),
+                    name: "iPhone".into(),
+                    allow_input: false,
+                    connected: true,
+                    route: Some(Mode::Lan),
+                }]
+            } else {
+                Vec::new()
+            },
+            requests: Vec::new(),
+        });
+        let addresses = [("Ethernet", "192.0.2.1"), ("Tailscale", "100.64.0.8")]
+            .into_iter()
+            .map(|(name, address)| connection::LanAddress {
+                address: address.parse().unwrap(),
+                name: name.into(),
+                preferred: name == "Ethernet",
+            })
+            .collect();
+        self.mobile_set_addresses(addresses, window, cx);
+    }
+}

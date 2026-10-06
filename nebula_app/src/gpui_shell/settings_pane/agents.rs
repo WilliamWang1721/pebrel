@@ -396,3 +396,28 @@ fn agent_status(row: &AgentIntegration, busy: bool) -> Message {
         Message::SettingsAgentsOff
     }
 }
+
+#[cfg(feature = "gpui-test-support")]
+impl SettingsPane {
+    /// Evidence-only fixture rows: installed, available and undetected agents.
+    pub(super) fn evidence_agents(&mut self) {
+        use crate::ai_hook::integrations::HookInspection;
+        use nebula_settings::AgentHook;
+        let row = |agent, executable: Option<&str>, hook, installed| AgentIntegration {
+            agent,
+            executable: executable.map(Into::into),
+            hook: Some(hook),
+            inspection: HookInspection {
+                available: true,
+                installed,
+                enabled: installed,
+                ..Default::default()
+            },
+        };
+        self.agents.rows = Some(vec![
+            row(AgentKind::Claude, Some("/Users/demo/.local/bin/claude"), AgentHook::Claude, true),
+            row(AgentKind::Codex, Some("/opt/homebrew/bin/codex"), AgentHook::Codex, false),
+            row(AgentKind::Cursor, None, AgentHook::Cursor, false),
+        ]);
+    }
+}
