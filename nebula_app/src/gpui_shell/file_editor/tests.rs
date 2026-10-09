@@ -108,7 +108,11 @@ fn returning_to_reader_keeps_source_edits_and_blocks_undo_until_source_is_open(
         _ => "ctrl",
     };
     cx.simulate_keystrokes(&format!("{modifier}-/ {modifier}-a"));
-    cx.simulate_input("Updated");
+    // Keep this one edit: slow simulated typing can cross the undo grouping timeout.
+    cx.update(|_, cx| {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string("Updated".to_owned()));
+    });
+    cx.simulate_keystrokes(&format!("{modifier}-v"));
     cx.run_until_parked();
     cx.simulate_keystrokes(&format!("{modifier}-/ {modifier}-z"));
     cx.run_until_parked();
