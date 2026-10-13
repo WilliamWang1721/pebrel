@@ -311,6 +311,9 @@ pub enum Subcommands {
     Migrate(MigrateOptions),
     /// Validate or create the Pebrel configuration.
     Config(ConfigOptions),
+    /// Collect system, install, shell and log details into a redacted ZIP to attach to a bug
+    /// report.
+    Diagnose(crate::diagnose::Options),
     /// Check or invoke a local plugin package without starting a GUI or plugin daemon.
     Plugin(crate::plugins::cli::Options),
     /// Export, verify, or import a portable ZIP theme package.

@@ -189,6 +189,8 @@ body:
     attributes:
       label: Logs / screenshots / 日志或截图
       description: |
+        Run `pebrel diagnose`, paste its report into this issue and drag the generated ZIP (redacted settings and logs) into this field.
+        运行 `pebrel diagnose`，把输出的报告贴到 Issue 中，并把生成的 ZIP（已脱敏的设置与日志）拖进此处。
         Required. Screenshot or short recording for anything visual; log lines for crashes, hangs and connection problems. Remove passwords, keys, tokens and host addresses first.
         必填。显示类问题贴截图或短录屏；崩溃、卡死、连接类问题贴日志。请先删掉密码、私钥、token、主机地址。
         Logs / 日志位置：

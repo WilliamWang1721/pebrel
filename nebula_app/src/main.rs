@@ -55,6 +55,7 @@ mod completion_context;
 mod config;
 mod config_cli;
 mod daemon;
+mod diagnose;
 mod directory_history;
 #[cfg(feature = "legacy-shell")]
 mod display;
@@ -276,6 +277,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(Subcommands::Msg(options)) => msg(options)?,
         Some(Subcommands::Migrate(options)) => migrate::migrate(options),
         Some(Subcommands::Config(options)) => std::process::exit(config_cli::run(options)),
+        Some(Subcommands::Diagnose(options)) => std::process::exit(diagnose::run(options)),
         Some(Subcommands::Plugin(options)) => std::process::exit(plugins::cli::run(options)),
         Some(Subcommands::Theme(options)) => {
             std::process::exit(theme_library::package::cli::run(options))
